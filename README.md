@@ -26,7 +26,7 @@ Maintenance page.
 | **Maintenance** | Fifteen recovery and cleanup tools (SFC, DISM, restore point, Storage Sense, Memory Diagnostic, Event Viewer, **Disk Defrag**) launched from one grid. |
 | **Tweaks** | Explorer and visual-effects tweaks, each written with a backup so it can be reverted. |
 | **Programs** | Installed applications from both registry hives, with uninstall and repair routing. |
-| **Updates** | `winget` application upgrades and Windows Update driver scans with a shared badge count. |
+| **Updates** | `winget` application upgrades, a per-app **UNINSTALL** for software you no longer want, and Windows Update driver scans with a shared badge count. |
 | **Registry Audit** | Dead `App Paths`, orphaned uninstall keys and stale file associations, removable per item. |
 | **Shortcut Audit** | Resolves ~25,000 shortcuts with `IShellLinkW`, flags dead links, recycles them, and keeps a persistent "not dead" list. |
 | **Benchmarks** | Quick CPU and disk sanity runs. |

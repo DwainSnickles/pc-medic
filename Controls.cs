@@ -596,6 +596,10 @@ internal sealed class ToggleRow : SkinnedControl
     private string _title = string.Empty;
     private string _subtitle = string.Empty;
     private string _badge = string.Empty;
+    private string _actionText = string.Empty;
+    private Color _actionTone = Theme.Bad;
+    private bool _actionHover;
+    private bool _actionPressed;
 
     public ToggleRow()
     {
@@ -634,6 +638,44 @@ internal sealed class ToggleRow : SkinnedControl
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Color Tone { get; set; } = Theme.Accent;
 
+    /// <summary>Optional per-row action pill before the switch; empty draws nothing.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public string ActionText
+    {
+        get => _actionText;
+        set
+        {
+            string text = value ?? string.Empty;
+            if (_actionText == text) return;
+            _actionText = text;
+            Invalidate();
+        }
+    }
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Color ActionTone
+    {
+        get => _actionTone;
+        set
+        {
+            _actionTone = value;
+            Invalidate();
+        }
+    }
+
+    /// <summary>Raised when the pill is pressed; the switch is left untouched.</summary>
+    public event Action<ToggleRow>? ActionClicked;
+
+    private Rectangle ActionBounds
+    {
+        get
+        {
+            if (_actionText.Length == 0) return Rectangle.Empty;
+            int width = TextRenderer.MeasureText(_actionText, Theme.Kicker).Width + 20;
+            return new Rectangle(Width - 58 - 10 - width, (Height - 18) / 2, width, 18);
+        }
+    }
+
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool Checked
     {
@@ -659,11 +701,13 @@ internal sealed class ToggleRow : SkinnedControl
     protected override void OnMouseMove(MouseEventArgs e)
     {
         bool overSwitch = SwitchBounds.Contains(e.Location);
+        bool overAction = _actionText.Length > 0 && ActionBounds.Contains(e.Location);
         bool changed = false;
-        if (overSwitch != _hoverSwitch)
+        if (overSwitch != _hoverSwitch || overAction != _actionHover)
         {
             _hoverSwitch = overSwitch;
-            Cursor = Enabled && (overSwitch || Clickable) ? Cursors.Hand : Cursors.Default;
+            _actionHover = overAction;
+            Cursor = Enabled && (overSwitch || overAction || Clickable) ? Cursors.Hand : Cursors.Default;
             changed = true;
         }
 
@@ -681,6 +725,7 @@ internal sealed class ToggleRow : SkinnedControl
     {
         _hover = false;
         _hoverSwitch = false;
+        _actionHover = false;
         Cursor = Cursors.Default;
         Invalidate();
         base.OnMouseLeave(e);
@@ -688,6 +733,14 @@ internal sealed class ToggleRow : SkinnedControl
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
+        if (_actionText.Length > 0 && Enabled && ActionBounds.Contains(e.Location))
+        {
+            _actionPressed = true;
+            ActionClicked?.Invoke(this);
+            base.OnMouseDown(e);
+            return;
+        }
+
         if (Enabled && !Locked && SwitchBounds.Contains(e.Location))
         {
             Checked = !Checked;
@@ -699,6 +752,13 @@ internal sealed class ToggleRow : SkinnedControl
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
+        if (_actionPressed)
+        {
+            _actionPressed = false;
+            base.OnMouseUp(e);
+            return;
+        }
+
         if (Enabled && Clickable && !SwitchBounds.Contains(e.Location)) RowClicked?.Invoke(this);
         base.OnMouseUp(e);
     }
@@ -724,7 +784,8 @@ internal sealed class ToggleRow : SkinnedControl
             g.FillRectangle(dot, 16, (Height / 2f) - 4f, 8, 8);
         }
 
-        int textWidth = Math.Max(40, Width - 90);
+        int reserved = _actionText.Length > 0 ? ActionBounds.Width + 12 : 0;
+        int textWidth = Math.Max(40, Width - 90 - reserved);
         TextRenderer.DrawText(
             g,
             Title,
@@ -751,9 +812,28 @@ internal sealed class ToggleRow : SkinnedControl
                 g,
                 Subtitle,
                 Theme.MonoSmall,
-                new Rectangle(34, 31, Width - 100, 20),
+                new Rectangle(34, 31, Math.Max(40, Width - 100 - reserved), 20),
                 interactive ? Theme.TextDim : Theme.TextFaint,
                 Labeled);
+        }
+
+        if (_actionText.Length > 0)
+        {
+            Rectangle pill = ActionBounds;
+            Color tone = Enabled ? ActionTone : Theme.TextFaint;
+
+            using GraphicsPath pillPath = Theme.Round(pill, 5f);
+            using (var fill = new SolidBrush(Theme.Alpha(tone, _actionHover && Enabled ? 60 : 26)))
+            {
+                g.FillPath(fill, pillPath);
+            }
+
+            using (var pen = new Pen(Theme.Alpha(tone, _actionHover && Enabled ? 200 : 120), 1f))
+            {
+                g.DrawPath(pen, pillPath);
+            }
+
+            TextRenderer.DrawText(g, _actionText, Theme.Kicker, pill, tone, Centered);
         }
 
         Rectangle track = SwitchBounds;

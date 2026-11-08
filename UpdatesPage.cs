@@ -10,6 +10,7 @@ internal sealed class UpdatesPage : PageBase
     private readonly BufferedPanel _drivers = new();
     private readonly ScanOverlay _appsLoading = new() { Visible = false };
     private readonly ScanOverlay _driversLoading = new() { Visible = false };
+    private readonly System.Windows.Forms.Timer _confirmTimer = new() { Interval = 4000 };
     private readonly Label _appStatus = new();
     private readonly Label _driverStatus = new();
     private readonly Label _note = new();
@@ -26,6 +27,7 @@ internal sealed class UpdatesPage : PageBase
     private bool _busyApps;
     private bool _busyDrivers;
     private bool _firstVisit = true;
+    private ToggleRow? _confirmRow;
 
     public UpdatesPage()
         : base("UPDATES", "Application upgrades through winget, driver updates through Windows Update.")
@@ -90,6 +92,7 @@ internal sealed class UpdatesPage : PageBase
 
         _apps.Resize += (_, _) => ResizeRows(_apps);
         _drivers.Resize += (_, _) => ResizeRows(_drivers);
+        _confirmTimer.Tick += (_, _) => ResetConfirm();
 
         SyncButtons();
     }
@@ -285,6 +288,99 @@ internal sealed class UpdatesPage : PageBase
         }
     }
 
+    /// <summary>First press arms the row, a second press within a few seconds removes the app.</summary>
+    private void RequestUninstall(ToggleRow row, AppUpgrade app)
+    {
+        if (_busyApps) return;
+
+        if (!ReferenceEquals(_confirmRow, row))
+        {
+            ResetConfirm();
+            _confirmRow = row;
+            row.ActionText = "CONFIRM?";
+            _confirmTimer.Start();
+            SetAppStatus($"PRESS CONFIRM TO REMOVE {Theme.Truncate(app.Name.ToUpperInvariant(), 22)}", Theme.Warn, app.Name);
+            return;
+        }
+
+        ResetConfirm();
+        _ = UninstallAsync(app);
+    }
+
+    private void ResetConfirm()
+    {
+        _confirmTimer.Stop();
+
+        if (_confirmRow is { IsDisposed: false } row) row.ActionText = "UNINSTALL";
+        _confirmRow = null;
+    }
+
+    /// <summary>winget first; if it refuses the package, the app's own registered uninstaller is started.</summary>
+    private async Task UninstallAsync(AppUpgrade app)
+    {
+        if (_busyApps) return;
+
+        _busyApps = true;
+        _scanApps.Enabled = false;
+        SetRowsEnabled(_appRows.Select(pair => pair.Row), false);
+        using IDisposable busy = Working();
+        using IDisposable plate = _appsLoading.Busy();
+        SyncButtons();
+        SetAppStatus($"REMOVING {Theme.Truncate(app.Name.ToUpperInvariant(), 26)}\u2026", Theme.Bad, app.Name);
+
+        try
+        {
+            (bool ok, string message) = await Task.Run(() => UpdatesService.Uninstall(app));
+
+            if (!ok)
+            {
+                // Store packages and apps without a winget uninstaller only remove through their own entry.
+                ProgramEntry? entry = await Task.Run(() => FindRegisteredUninstaller(app.Name));
+
+                if (entry is null)
+                {
+                    ActivityLog.Error(message);
+                    return;
+                }
+
+                (ok, message) = await Task.Run(() => ProgramsService.Uninstall(entry));
+            }
+
+            if (ok) ActivityLog.Success(message);
+            else ActivityLog.Error(message);
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Error($"Uninstall failed: {ex.Message}");
+        }
+        finally
+        {
+            _busyApps = false;
+            _scanApps.Enabled = true;
+            SetRowsEnabled(_appRows.Select(pair => pair.Row), true);
+            SyncButtons();
+            ReloadApps(announce: false);
+        }
+    }
+
+    private static ProgramEntry? FindRegisteredUninstaller(string name)
+    {
+        try
+        {
+            return ProgramsService.Load().FirstOrDefault(entry =>
+                !entry.Dead &&
+                entry.HasUninstaller &&
+                (string.Equals(entry.DisplayName, name, StringComparison.OrdinalIgnoreCase) ||
+                 entry.DisplayName.StartsWith(name, StringComparison.OrdinalIgnoreCase) ||
+                 name.StartsWith(entry.DisplayName, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn($"Uninstaller lookup failed: {ex.Message}");
+            return null;
+        }
+    }
+
     private void RebuildApps()
     {
         _apps.SuspendLayout();
@@ -308,11 +404,14 @@ internal sealed class UpdatesPage : PageBase
                 BadgeText = "APP",
                 BadgeTone = Theme.Accent,
                 Tone = Theme.Accent,
+                ActionText = "UNINSTALL",
+                ActionTone = Theme.Bad,
                 Checked = true,
                 Tag = app,
             };
 
             row.Toggled += (_, _) => SyncButtons();
+            row.ActionClicked += clicked => RequestUninstall(clicked, app);
             _tips.SetToolTip(row, $"{app.Name}\r\n{app.VersionLine}  \u2022  {app.Id}");
             row.SetBounds(4, y, RowWidth(_apps), 62);
             _apps.Controls.Add(row);

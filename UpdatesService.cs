@@ -110,6 +110,23 @@ internal static class UpdatesService
             : (false, $"{app.Name}: {result.Reason}");
     }
 
+    /// <summary>Removes a package for good, for apps that stopped being wanted rather than out of date.</summary>
+    public static (bool Ok, string Message) Uninstall(AppUpgrade app)
+    {
+        string? winget = WingetPath;
+        if (winget is null) return (false, "winget is not installed.");
+
+        CmdResult result = Cmd.Run(
+            winget,
+            $"uninstall --id \"{app.Id}\" --exact --silent " +
+            "--accept-source-agreements --disable-interactivity",
+            600000);
+
+        return result.Ok
+            ? (true, $"{app.Name} uninstalled.")
+            : (false, $"{app.Name}: {result.Reason}");
+    }
+
     /// <summary>Reads the driver updates the Windows Update agent is offering. Read-only.</summary>
     public static (List<DriverUpdate> Drivers, string? Error) ScanDrivers()
     {
