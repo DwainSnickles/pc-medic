@@ -13,7 +13,7 @@ Maintenance page.
 
 ![PC Medic overview: live CPU, memory, system drive, update and uptime tiles with one-click actions, machine profile and activity feed](docs/pc-medic-overview.png)
 
-![PC Medic Shortcut Audit mid-scan: a centred LOADING 33% plate with a filling progress bar covers the findings card while the scan resolves links](docs/pc-medic.png)
+![PC Medic Registry Audit mid-scan: a centred LOADING 55% plate with a filling bar covers the Shortcuts card while IShellLinkW resolves ~25,000 links, and the WORKING strip runs along the bottom of the shell](docs/pc-medic.png)
 
 ## What it does
 
@@ -27,7 +27,7 @@ Maintenance page.
 | **Tweaks** | Explorer and visual-effects tweaks, each written with a backup so it can be reverted. |
 | **Programs** | Installed applications from both registry hives, with uninstall and repair routing. |
 | **Updates** | `winget` application upgrades, a per-app **UNINSTALL** for software you no longer want, and Windows Update driver scans with a shared badge count. |
-| **Audit** | One page, two audits: dead `App Paths`, orphaned uninstall keys and stale file associations on the left, ~25,000 shortcuts resolved with `IShellLinkW` on the right. Removable per item, with a `.reg` backup and a persistent "not dead" list. |
+| **Registry Audit** | One page, two audits: dead `App Paths`, orphaned uninstall keys and stale file associations on the left, ~25,000 shortcuts resolved with `IShellLinkW` on the right. Removable per item, with a `.reg` backup and a persistent "not dead" list. |
 | **Benchmarks** | Quick CPU and disk sanity runs. |
 | **Command Shell** | An embedded console for the tools the UI does not wrap. |
 
@@ -51,6 +51,11 @@ still have to resolve and count up by that share. Where the work is one opaque c
 Windows Update agent, `powercfg`, a temp-file sweep), nothing can be measured, so the bar eases
 toward a ceiling and resolves only when the call returns. It never reaches 100% before the work is
 done, and the plate hides itself again the moment the results are ready.
+
+Every wait also raises a `WORKING` strip along the bottom of the shell, with a segment sweeping its
+track, so the window is never frozen and silent even when only one card is busy. Downloads do not
+need either: `winget` streams its transfer, so each update row and each benchmark rig shows its own
+bar, filled from the real percentage or sweeping when winget reports none.
 
 ## Requirements
 

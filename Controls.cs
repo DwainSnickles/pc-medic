@@ -600,6 +600,10 @@ internal sealed class ToggleRow : SkinnedControl
     private Color _actionTone = Theme.Bad;
     private bool _actionHover;
     private bool _actionPressed;
+    private string _actionGlyph = string.Empty;
+    private bool _working;
+    private int _progress;
+    private float _phase;
 
     public ToggleRow()
     {
@@ -638,6 +642,43 @@ internal sealed class ToggleRow : SkinnedControl
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Color Tone { get; set; } = Theme.Accent;
 
+    /// <summary>True while a download or install owns this row: a bar runs along its bottom edge.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool Working
+    {
+        get => _working;
+        set
+        {
+            if (_working == value) return;
+            _working = value;
+            Invalidate();
+        }
+    }
+
+    /// <summary>0–100 from the downloader; zero keeps the bar sweeping instead of filling.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public int Progress
+    {
+        get => _progress;
+        set
+        {
+            int clamped = Math.Clamp(value, 0, 100);
+            if (_progress == clamped) return;
+            _progress = clamped;
+            Invalidate();
+        }
+    }
+
+    /// <summary>Advances the indeterminate sweep; driven by the owning page's timer.</summary>
+    public void Sweep()
+    {
+        if (!_working) return;
+
+        _phase += 0.024f;
+        if (_phase > 1f) _phase -= 1f;
+        Invalidate();
+    }
+
     /// <summary>Optional per-row action pill before the switch; empty draws nothing.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public string ActionText
@@ -663,14 +704,42 @@ internal sealed class ToggleRow : SkinnedControl
         }
     }
 
+    /// <summary>
+    /// Icon-only action (a Segoe glyph) drawn as a square pad rather than a text pill, for a row whose
+    /// single action is obvious enough that a label would only crowd the title.
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public string ActionGlyph
+    {
+        get => _actionGlyph;
+        set
+        {
+            string glyph = value ?? string.Empty;
+            if (_actionGlyph == glyph) return;
+            _actionGlyph = glyph;
+            Invalidate();
+        }
+    }
+
+    /// <summary>Raised as the pointer enters and leaves the action, so a page can swap its tooltip.</summary>
+    public event Action<ToggleRow, bool>? ActionHoverChanged;
+
     /// <summary>Raised when the pill is pressed; the switch is left untouched.</summary>
     public event Action<ToggleRow>? ActionClicked;
+
+    private bool HasAction => _actionText.Length > 0 || _actionGlyph.Length > 0;
 
     private Rectangle ActionBounds
     {
         get
         {
-            if (_actionText.Length == 0) return Rectangle.Empty;
+            if (!HasAction) return Rectangle.Empty;
+
+            if (_actionText.Length == 0)
+            {
+                return new Rectangle(Width - 58 - 10 - 30, (Height - 26) / 2, 30, 26);
+            }
+
             int width = TextRenderer.MeasureText(_actionText, Theme.Kicker).Width + 20;
             return new Rectangle(Width - 58 - 10 - width, (Height - 18) / 2, width, 18);
         }
@@ -701,15 +770,18 @@ internal sealed class ToggleRow : SkinnedControl
     protected override void OnMouseMove(MouseEventArgs e)
     {
         bool overSwitch = SwitchBounds.Contains(e.Location);
-        bool overAction = _actionText.Length > 0 && ActionBounds.Contains(e.Location);
+        bool overAction = HasAction && ActionBounds.Contains(e.Location);
+        bool actionChanged = overAction != _actionHover;
         bool changed = false;
-        if (overSwitch != _hoverSwitch || overAction != _actionHover)
+        if (overSwitch != _hoverSwitch || actionChanged)
         {
             _hoverSwitch = overSwitch;
             _actionHover = overAction;
             Cursor = Enabled && (overSwitch || overAction || Clickable) ? Cursors.Hand : Cursors.Default;
             changed = true;
         }
+
+        if (actionChanged) ActionHoverChanged?.Invoke(this, overAction);
 
         if (!_hover)
         {
@@ -725,15 +797,17 @@ internal sealed class ToggleRow : SkinnedControl
     {
         _hover = false;
         _hoverSwitch = false;
+        bool wasAction = _actionHover;
         _actionHover = false;
         Cursor = Cursors.Default;
+        if (wasAction) ActionHoverChanged?.Invoke(this, false);
         Invalidate();
         base.OnMouseLeave(e);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        if (_actionText.Length > 0 && Enabled && ActionBounds.Contains(e.Location))
+        if (HasAction && Enabled && ActionBounds.Contains(e.Location))
         {
             _actionPressed = true;
             ActionClicked?.Invoke(this);
@@ -784,7 +858,7 @@ internal sealed class ToggleRow : SkinnedControl
             g.FillRectangle(dot, 16, (Height / 2f) - 4f, 8, 8);
         }
 
-        int reserved = _actionText.Length > 0 ? ActionBounds.Width + 12 : 0;
+        int reserved = HasAction ? ActionBounds.Width + 12 : 0;
         int textWidth = Math.Max(40, Width - 90 - reserved);
         bool badge = !string.IsNullOrEmpty(BadgeText);
 
@@ -822,12 +896,13 @@ internal sealed class ToggleRow : SkinnedControl
                 Labeled);
         }
 
-        if (_actionText.Length > 0)
+        if (HasAction)
         {
             Rectangle pill = ActionBounds;
             Color tone = Enabled ? ActionTone : Theme.TextFaint;
+            bool glyphOnly = _actionText.Length == 0;
 
-            using GraphicsPath pillPath = Theme.Round(pill, 5f);
+            using GraphicsPath pillPath = Theme.Round(pill, glyphOnly ? 6f : 5f);
             using (var fill = new SolidBrush(Theme.Alpha(tone, _actionHover && Enabled ? 60 : 26)))
             {
                 g.FillPath(fill, pillPath);
@@ -838,7 +913,14 @@ internal sealed class ToggleRow : SkinnedControl
                 g.DrawPath(pen, pillPath);
             }
 
-            TextRenderer.DrawText(g, _actionText, Theme.Kicker, pill, tone, Centered);
+            if (glyphOnly)
+            {
+                TextRenderer.DrawText(g, _actionGlyph, Theme.Icon, pill, tone, Centered);
+            }
+            else
+            {
+                TextRenderer.DrawText(g, _actionText, Theme.Kicker, pill, tone, Centered);
+            }
         }
 
         Rectangle track = SwitchBounds;
@@ -856,6 +938,36 @@ internal sealed class ToggleRow : SkinnedControl
         int knobX = Checked ? track.Right - 17 : track.X + 3;
         using var knob = new SolidBrush(Checked ? (interactive ? Tone : Theme.Alpha(Tone, 110)) : Theme.TextFaint);
         g.FillEllipse(knob, knobX, track.Y + 3, 14, 14);
+
+        if (!_working) return;
+
+        var meter = new RectangleF(14, Height - 9, Math.Max(40, Width - 28), 4);
+        using (GraphicsPath meterTrack = Theme.Round(meter, 2f))
+        {
+            using var off = new SolidBrush(Theme.BorderSoft);
+            g.FillPath(off, meterTrack);
+        }
+
+        RectangleF lit;
+
+        if (_progress > 0)
+        {
+            lit = new RectangleF(meter.X, meter.Y, Math.Max(3f, meter.Width * (_progress / 100f)), meter.Height);
+        }
+        else
+        {
+            float segment = Math.Max(40f, meter.Width * 0.3f);
+            float x = -segment + (_phase * (meter.Width + segment));
+            float left = Math.Max(meter.X, x);
+            float right = Math.Min(meter.Right, x + segment);
+            if (right <= left) return;
+
+            lit = new RectangleF(left, meter.Y, right - left, meter.Height);
+        }
+
+        using GraphicsPath litPath = Theme.Round(lit, 2f);
+        using var brush = new SolidBrush(_progress > 0 ? Theme.Good : Theme.Accent);
+        g.FillPath(brush, litPath);
     }
 }
 
@@ -1259,6 +1371,223 @@ internal sealed class ToolTile : SkinnedControl
         g.DrawLine(arrow, cx, badge.Y + 3.5f, cx, bottom);
         g.DrawLine(arrow, cx - 2.6f, bottom - 2.8f, cx, bottom);
         g.DrawLine(arrow, cx + 2.6f, bottom - 2.8f, cx, bottom);
+    }
+}
+
+/// <summary>
+/// Indeterminate working strip for work that cannot report a percentage. The shell shows it for the
+/// life of a BusyScope, so every wait cursor in the suite now comes with a moving bar rather than a
+/// frozen window.
+/// </summary>
+internal sealed class BusyBar : SkinnedControl
+{
+    private readonly System.Windows.Forms.Timer _sweep = new() { Interval = 40 };
+    private float _phase;
+
+    public BusyBar()
+    {
+        Height = 36;
+        Visible = false;
+        _sweep.Tick += (_, _) =>
+        {
+            _phase += 0.024f;
+            if (_phase > 1f) _phase -= 1f;
+            Invalidate();
+        };
+    }
+
+    /// <summary>
+    /// Shows the strip when the busy form is this control's own form. A modal dialog runs its own
+    /// plate, so the shell's bar stays out of its way.
+    /// </summary>
+    public void Begin(Form? owner)
+    {
+        if (IsDisposed) return;
+
+        if (InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke(new Action(() => Begin(owner)));
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle went away mid-flight; nothing to show.
+            }
+
+            return;
+        }
+
+        if (owner is not null && owner != FindForm()) return;
+
+        _phase = 0f;
+        Visible = true;
+        BringToFront();
+        _sweep.Start();
+        Invalidate();
+    }
+
+    public void End()
+    {
+        if (IsDisposed) return;
+
+        if (InvokeRequired)
+        {
+            try
+            {
+                BeginInvoke(new Action(End));
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle went away mid-flight; nothing to hide.
+            }
+
+            return;
+        }
+
+        _sweep.Stop();
+        Visible = false;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _sweep.Dispose();
+        base.Dispose(disposing);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        if (Width < 80 || Height < 24) return;
+
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        Theme.PaintSurface(
+            g,
+            new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f),
+            8f,
+            Theme.Surface2,
+            Theme.Alpha(Theme.Accent, 60),
+            null);
+
+        TextRenderer.DrawText(
+            g,
+            "WORKING",
+            Theme.Kicker,
+            new Rectangle(16, 6, 140, 14),
+            Theme.Accent,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+        TextRenderer.DrawText(
+            g,
+            "PLEASE WAIT",
+            Theme.Kicker,
+            new Rectangle(Width - 156, 6, 140, 14),
+            Theme.TextDim,
+            TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+        var track = new RectangleF(16, Height - 14, Width - 32, 5);
+        using (GraphicsPath path = Theme.Round(track, 2.5f))
+        {
+            using var off = new SolidBrush(Theme.BorderSoft);
+            g.FillPath(off, path);
+        }
+
+        float segment = Math.Max(60f, track.Width * 0.28f);
+        float x = -segment + (_phase * (track.Width + segment));
+        float left = Math.Max(track.X, x);
+        float right = Math.Min(track.Right, x + segment);
+        if (right <= left) return;
+
+        var lit = new RectangleF(left, track.Y, right - left, track.Height);
+        using GraphicsPath litPath = Theme.Round(lit, 2.5f);
+        using var brush = new LinearGradientBrush(
+            new RectangleF(track.X, track.Y, Math.Max(2f, track.Width), track.Height),
+            Theme.Alpha(Theme.Accent, 70),
+            Theme.Accent,
+            LinearGradientMode.Horizontal);
+        g.FillPath(brush, litPath);
+    }
+}
+
+/// <summary>
+/// Fixed window pad: a raised 3D square with a single glyph, used for the shell's minimize control
+/// so the action carries its own tooltip instead of hiding in stock window chrome.
+/// </summary>
+internal sealed class ChromeButton : SkinnedControl
+{
+    private bool _hover;
+    private bool _down;
+
+    public ChromeButton()
+    {
+        Size = new Size(34, 30);
+        Cursor = Cursors.Hand;
+        Font = Theme.Icon;
+    }
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public string Glyph { get; set; } = "\uE921";
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Color Tone { get; set; } = Theme.TextDim;
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        _hover = true;
+        Invalidate();
+        base.OnMouseEnter(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        _hover = false;
+        _down = false;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        _down = true;
+        Invalidate();
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        _down = false;
+        Invalidate();
+        base.OnMouseUp(e);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        if (Width < 12 || Height < 12) return;
+
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        var rect = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
+        using GraphicsPath path = Theme.Round(rect, 7f);
+
+        // Pressed inverts the gradient, so the pad reads as being pushed rather than raised.
+        Color top = _down ? Theme.Bg : _hover ? Theme.Surface2 : Color.FromArgb(16, 22, 31);
+        Color bottom = _down ? Theme.Surface2 : Color.FromArgb(10, 14, 20);
+
+        using (var fill = new LinearGradientBrush(rect, top, bottom, 90f))
+        {
+            g.FillPath(fill, path);
+        }
+
+        using (var edge = new Pen(
+                   new LinearGradientBrush(rect, Theme.Alpha(Theme.Text, _hover ? 90 : 46), Theme.Bg, 90f),
+                   1f))
+        {
+            g.DrawPath(edge, path);
+        }
+
+        var glyph = new Rectangle(0, _down ? 1 : 0, Width, Height);
+        TextRenderer.DrawText(g, Glyph, Theme.Icon, glyph, _hover ? Theme.Accent : Tone, Centered);
     }
 }
 

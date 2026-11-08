@@ -10,11 +10,14 @@ internal sealed class MainForm : Form
     private readonly Panel _sidebar = new();
     private readonly Panel _header = new();
     private readonly Panel _content = new();
+    private readonly BusyBar _busyBar = new();
     private readonly Label _pageTitle = new();
     private readonly Label _pageSub = new();
     private readonly Label _clock = new();
     private readonly Badge _adminBadge = new();
     private readonly Badge _planBadge = new();
+    private readonly ChromeButton _minimize = new() { Glyph = "\uE921" };
+    private readonly ToolTip _chromeTips = new();
     private readonly List<NavItem> _nav = new();
     private NavItem? _updatesNav;
     private readonly Dictionary<string, PageBase> _pages = new();
@@ -305,12 +308,19 @@ internal sealed class MainForm : Form
         _header.Controls.Add(_adminBadge);
         _header.Controls.Add(_planBadge);
 
+        // Fixed pad in the header: minimizing here parks the console in the tray, which the tooltip says.
+        _header.Controls.Add(_minimize);
+        _chromeTips.SetToolTip(_minimize, "Minimize to Notify Icon");
+        _minimize.Click += (_, _) => WindowState = FormWindowState.Minimized;
+
         _header.Resize += (_, _) => LayoutHeader();
     }
 
     private void LayoutHeader()
     {
         int right = _header.ClientSize.Width - 26;
+        _minimize.SetBounds(right - _minimize.Width, 24, _minimize.Width, 30);
+        right -= _minimize.Width + 16;
         _clock.Location = new Point(right - _clock.Width, 27);
         right -= _clock.Width + 16;
         _adminBadge.Location = new Point(right - _adminBadge.Width, 31);
@@ -323,6 +333,22 @@ internal sealed class MainForm : Form
         _content.Dock = DockStyle.Fill;
         _content.BackColor = Theme.Bg;
         _content.Padding = new Padding(28, 8, 26, 22);
+
+        // Floats over the bottom of the page while a busy scope runs; it never reflows the page, so
+        // the layout stays put when a scan starts and stops.
+        _content.Controls.Add(_busyBar);
+        _content.SizeChanged += (_, _) => LayoutBusyBar();
+        _content.Layout += (_, _) => LayoutBusyBar();
+        LayoutBusyBar();
+
+        Busy.Indicator = _busyBar;
+    }
+
+    private void LayoutBusyBar()
+    {
+        int width = Math.Max(160, _content.ClientSize.Width - 54);
+        int top = Math.Max(0, _content.ClientSize.Height - _busyBar.Height - 16);
+        _busyBar.SetBounds(28, top, width, _busyBar.Height);
     }
 
     private void BuildNav()
@@ -337,7 +363,7 @@ internal sealed class MainForm : Form
             ("tweaks", "\uE713", "Tweaks"),
             ("programs", "\uE7B8", "Programs"),
             ("updates", "\uE896", "Updates"),
-            ("audit", "\uE721", "Audit"),
+            ("audit", "\uE721", "Registry Audit"),
             ("benchmarks", "\uE9D9", "Benchmarks"),
             ("console", "\uE756", "Command Shell"),
         };
@@ -436,6 +462,7 @@ internal sealed class MainForm : Form
     {
         if (disposing)
         {
+            Busy.Indicator = null;
             _clockTimer.Stop();
             _clockTimer.Dispose();
             UpdatesState.Changed -= OnUpdatesChanged;

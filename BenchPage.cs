@@ -129,6 +129,7 @@ internal sealed class BenchPage : PageBase
         root.Controls.Add(footer, 0, 1);
 
         _getMissing.Click += (_, _) => OpenMissingDownloads();
+        _tips.SetToolTip(_getMissing, "Installs every missing rig through winget, one progress bar per download.");
 
         Controls.Add(root);
         RefreshStatuses();
@@ -179,12 +180,15 @@ internal sealed class BenchPage : PageBase
             : $"{ready} / {_tiles.Count} RIGS DETECTED{customSuffix}  \u2022  {missing} MISSING  \u2022  CLICK GET FOR THE INSTALL LINK";
         _status.ForeColor = ready == _tiles.Count ? Theme.Good : Theme.TextDim;
 
-        _getMissing.Text = missing == 0 ? "ALL RIGS READY" : $"GET ALL MISSING ({missing})";
+        _getMissing.Text = missing == 0 ? "ALL RIGS READY" : $"INSTALL ALL MISSING ({missing})";
         _getMissing.Enabled = missing > 0;
         _getMissing.Invalidate();
     }
 
-    /// <summary>Opens the official download page for every rig that is not present yet.</summary>
+    /// <summary>
+    /// Installs every rig that is not present yet, one winget package at a time, with a live bar for
+    /// each download. The grid is re-detected afterwards, so installed rigs stop reading as missing.
+    /// </summary>
     private void OpenMissingDownloads()
     {
         List<PortableApp> missing = Tools.Portables
@@ -198,22 +202,37 @@ internal sealed class BenchPage : PageBase
             return;
         }
 
-        int opened = 0;
-        foreach (PortableApp app in missing)
+        if (UpdatesService.WingetPath is null)
         {
-            (bool ok, string message) = Tools.OpenUrl(app.Url);
-            if (ok)
+            // Without winget there is nothing to drive a download, so the install pages remain the offer.
+            int opened = 0;
+
+            foreach (PortableApp app in missing)
             {
-                opened++;
-                ActivityLog.Success($"{app.Title}: download page opened.");
+                (bool ok, string message) = Tools.OpenUrl(app.Url);
+                if (ok)
+                {
+                    opened++;
+                    ActivityLog.Success($"{app.Title}: download page opened.");
+                }
+                else
+                {
+                    ActivityLog.Error($"{app.Title}: {message}");
+                }
             }
-            else
-            {
-                ActivityLog.Error($"{app.Title}: {message}");
-            }
+
+            ActivityLog.Warn($"winget is not installed \u2014 opened {opened} of {missing.Count} install pages instead.");
+            RefreshStatuses();
+            return;
         }
 
-        ActivityLog.Info($"Opened {opened} of {missing.Count} download pages.");
+        using var setup = new RigSetupForm(missing);
+        setup.ShowDialog(FindForm());
+
+        ActivityLog.Info(setup.InstalledAnything
+            ? "Rig setup finished \u2014 rescanning the suite."
+            : "Rig setup closed without installing anything.");
+
         RefreshStatuses();
     }
 

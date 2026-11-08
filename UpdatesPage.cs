@@ -11,6 +11,7 @@ internal sealed class UpdatesPage : PageBase
     private readonly ScanOverlay _appsLoading = new() { Visible = false };
     private readonly ScanOverlay _driversLoading = new() { Visible = false };
     private readonly System.Windows.Forms.Timer _confirmTimer = new() { Interval = 4000 };
+    private readonly System.Windows.Forms.Timer _rowSweep = new() { Interval = 40 };
     private readonly Label _appStatus = new();
     private readonly Label _driverStatus = new();
     private readonly Label _note = new();
@@ -93,6 +94,10 @@ internal sealed class UpdatesPage : PageBase
         _apps.Resize += (_, _) => ResizeRows(_apps);
         _drivers.Resize += (_, _) => ResizeRows(_drivers);
         _confirmTimer.Tick += (_, _) => ResetConfirm();
+        _rowSweep.Tick += (_, _) =>
+        {
+            foreach ((ToggleRow row, AppUpgrade _) in _appRows) row.Sweep();
+        };
 
         SyncButtons();
     }
@@ -484,11 +489,14 @@ internal sealed class UpdatesPage : PageBase
         return y + 40;
     }
 
+    /// <summary>
+    /// Upgrades every ticked app in turn, each with its own bar on its own row: winget streams the
+    /// transfer, so the row fills with the real percentage and sweeps only when nothing is reported.
+    /// </summary>
     private async void UpgradeSelected()
     {
-        List<AppUpgrade> selected = _appRows
+        List<(ToggleRow Row, AppUpgrade App)> selected = _appRows
             .Where(pair => pair.Row.Checked)
-            .Select(pair => pair.App)
             .ToList();
 
         if (selected.Count == 0) return;
@@ -498,16 +506,32 @@ internal sealed class UpdatesPage : PageBase
         SetRowsEnabled(_appRows.Select(pair => pair.Row), false);
         using IDisposable busy = Working();
         SyncButtons();
+        _rowSweep.Start();
 
         int applied = 0;
+        int index = 0;
 
         try
         {
-            foreach (AppUpgrade app in selected)
+            foreach ((ToggleRow row, AppUpgrade app) in selected)
             {
-                SetAppStatus($"UPGRADING {Theme.Truncate(app.Name.ToUpperInvariant(), 28)}\u2026", Theme.Text, app.Name);
+                index++;
+                BeginRowProgress(row);
+                SetAppStatus(
+                    $"({index}/{selected.Count}) UPGRADING {Theme.Truncate(app.Name.ToUpperInvariant(), 22)}",
+                    Theme.Text,
+                    app.Name);
 
-                (bool ok, string message) = await Task.Run(() => UpdatesService.Upgrade(app));
+                var progress = new Progress<int>(percent =>
+                {
+                    if (!IsDisposed) ReportRowProgress(row, percent);
+                });
+
+                (bool ok, string message) = await UpdatesService.UpgradeAsync(app, progress);
+
+                if (IsDisposed) return;
+
+                EndRowProgress(row, ok);
 
                 if (ok)
                 {
@@ -522,12 +546,42 @@ internal sealed class UpdatesPage : PageBase
         }
         finally
         {
+            _rowSweep.Stop();
             _busyApps = false;
             _scanApps.Enabled = true;
             SetRowsEnabled(_appRows.Select(pair => pair.Row), true);
             ActivityLog.Info($"Upgrade pass finished: {applied} of {selected.Count} applied.");
             ReloadApps(announce: false);
         }
+    }
+
+    /// <summary>The row takes over as the progress surface while its package downloads and installs.</summary>
+    private static void BeginRowProgress(ToggleRow row)
+    {
+        row.Working = true;
+        row.Progress = 0;
+        row.ActionText = string.Empty;
+        row.BadgeText = "0%";
+        row.BadgeTone = Theme.Accent;
+        row.Invalidate();
+    }
+
+    private static void ReportRowProgress(ToggleRow row, int percent)
+    {
+        if (percent <= 0) return;
+
+        row.Progress = percent;
+        row.BadgeText = $"{percent}%";
+    }
+
+    private static void EndRowProgress(ToggleRow row, bool ok)
+    {
+        row.Working = false;
+        row.Progress = 0;
+        row.ActionText = "UNINSTALL";
+        row.BadgeText = ok ? "DONE" : "FAILED";
+        row.BadgeTone = ok ? Theme.Good : Theme.Bad;
+        row.Invalidate();
     }
 
     private async void InstallSelected()

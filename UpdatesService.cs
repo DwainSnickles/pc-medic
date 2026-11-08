@@ -94,20 +94,29 @@ internal static class UpdatesService
         return (apps, result.Ok ? null : result.Reason);
     }
 
-    public static (bool Ok, string Message) Upgrade(AppUpgrade app)
+    /// <summary>
+    /// Streams winget's upgrade so the page can fill that row's own bar from the transfer it is
+    /// actually doing, instead of parking a spinner for the whole pass.
+    /// </summary>
+    public static async Task<(bool Ok, string Message)> UpgradeAsync(
+        AppUpgrade app,
+        IProgress<int>? percent = null,
+        CancellationToken token = default)
     {
-        string? winget = WingetPath;
-        if (winget is null) return (false, "winget is not installed.");
+        if (WingetPath is null) return (false, "winget is not installed.");
 
-        CmdResult result = Cmd.Run(
-            winget,
-            $"upgrade --id \"{app.Id}\" --exact --silent --include-unknown " +
-            "--accept-package-agreements --accept-source-agreements --disable-interactivity",
-            600000);
+        WingetResult run = await Winget.RunAsync(
+            new[]
+            {
+                "upgrade", "--id", app.Id, "--exact", "--silent", "--include-unknown",
+                "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity",
+            },
+            percent,
+            token);
 
-        return result.Ok
+        return run.Ok
             ? (true, $"{app.Name} upgraded to {app.Available}.")
-            : (false, $"{app.Name}: {result.Reason}");
+            : (false, $"{app.Name}: {run.Reason}");
     }
 
     /// <summary>Removes a package for good, for apps that stopped being wanted rather than out of date.</summary>

@@ -36,7 +36,7 @@ internal sealed class AuditPage : PageBase
 
     public AuditPage()
         : base(
-            "AUDIT",
+            "REGISTRY AUDIT",
             "Orphaned registry keys and dead shortcuts, removed per item with a backup first.")
     {
         var root = new TableLayoutPanel
@@ -53,8 +53,8 @@ internal sealed class AuditPage : PageBase
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
 
         Card registryCard = BuildColumn(
-            "REGISTRY",
-            "ORPHANED ENTRIES",
+            "REGISTRY AUDIT",
+            "PROVEN DEAD ENTRIES",
             _registryList,
             _registryStatus,
             _registryLoading,
@@ -323,7 +323,9 @@ internal sealed class AuditPage : PageBase
             BadgeText = issue.ReviewOnly ? "REVIEW" : badge,
             BadgeTone = issue.ReviewOnly ? Theme.TextFaint : issue.CategoryTone,
             Tone = issue.CategoryTone,
-            Checked = false,
+            // Verified dead: the file, folder or key target is gone from a mounted fixed drive, so the
+            // switch starts on and REMOVE is armed. Review-only rows stay off and untickable.
+            Checked = !issue.ReviewOnly,
             Enabled = !issue.ReviewOnly,
             Tag = issue,
         };
@@ -333,7 +335,9 @@ internal sealed class AuditPage : PageBase
         _tips.SetToolTip(
             row,
             $"{issue.Display}\r\n{issue.RegistryPath}\r\nMissing: {issue.MissingPath}" +
-            (issue.ReviewOnly ? "\r\nManage this on the Startup Apps page." : string.Empty));
+            (issue.ReviewOnly
+                ? "\r\nReported only \u2014 manage this on the Startup Apps page."
+                : "\r\nVerified missing on a mounted fixed drive, so it starts ticked for removal."));
 
         return row;
     }

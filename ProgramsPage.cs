@@ -12,7 +12,6 @@ internal sealed class ProgramsPage : PageBase
     private readonly Label _footer = new();
     private readonly ToolTip _tips = new();
     private readonly NeonButton _rescan = Button("RESCAN", width: 92, height: 30);
-    private readonly NeonButton _uninstall = Button("UNINSTALL", width: 216, height: 30);
     private readonly NeonButton _clean = Button("REMOVE DEAD", width: 152, height: 30);
     private readonly List<(ToggleRow Row, ProgramEntry Entry)> _rows = new();
     private List<ProgramEntry> _entries = new();
@@ -21,7 +20,6 @@ internal sealed class ProgramsPage : PageBase
     public ProgramsPage()
         : base("PROGRAMS", "Installed applications, one-click uninstall, and dead entries that can be cleared out.")
     {
-        _uninstall.Tone = Theme.Warn;
         _clean.Tone = Theme.Bad;
 
         var toolbar = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = Theme.Bg };
@@ -34,7 +32,6 @@ internal sealed class ProgramsPage : PageBase
         toolbar.Controls.Add(_status);
 
         toolbar.Controls.Add(_rescan);
-        toolbar.Controls.Add(_uninstall);
         toolbar.Controls.Add(_clean);
 
         void LayoutToolbar()
@@ -42,8 +39,6 @@ internal sealed class ProgramsPage : PageBase
             int right = toolbar.ClientSize.Width;
             right -= _rescan.Width;
             _rescan.SetBounds(right, 4, _rescan.Width, 30);
-            right -= _uninstall.Width + 8;
-            _uninstall.SetBounds(right, 4, _uninstall.Width, 30);
             right -= _clean.Width + 8;
             _clean.SetBounds(right, 4, _clean.Width, 30);
         }
@@ -70,7 +65,6 @@ internal sealed class ProgramsPage : PageBase
         Controls.Add(toolbar);
 
         _rescan.Click += (_, _) => Reload(announce: true);
-        _uninstall.Click += (_, _) => UninstallSelected();
         _clean.Click += (_, _) => CleanSelected();
 
         _list.Resize += (_, _) =>
@@ -167,6 +161,11 @@ internal sealed class ProgramsPage : PageBase
 
     private ToggleRow BuildRow(ProgramEntry entry)
     {
+        string details =
+            $"{entry.DisplayName}\r\n{entry.RegistryPath}" +
+            (entry.HasUninstaller ? $"\r\n{entry.UninstallCommand}" : string.Empty) +
+            (entry.Dead ? $"\r\n{entry.DeadReason}" : string.Empty);
+
         var row = new ToggleRow
         {
             Title = Theme.Truncate(entry.DisplayName, 68),
@@ -175,46 +174,33 @@ internal sealed class ProgramsPage : PageBase
             BadgeTone = entry.Dead ? Theme.Bad : Theme.TextDim,
             Tone = entry.Dead ? Theme.Bad : Theme.Accent,
             Checked = false,
+            // A working program removes itself from the bin; only dead entries are ticked, for clearing.
+            Locked = !entry.Dead,
+            ActionGlyph = entry.Dead ? string.Empty : "\uE74D",
+            ActionTone = Theme.Bad,
             Tag = entry,
         };
 
-        row.Toggled += (_, on) =>
-        {
-            if (on && !entry.Dead) SelectOnly(row);
-            SyncButtons();
-        };
+        row.Toggled += (_, _) => SyncButtons();
 
-        _tips.SetToolTip(
-            row,
-            $"{entry.DisplayName}\r\n{entry.RegistryPath}" +
-            (entry.HasUninstaller ? $"\r\n{entry.UninstallCommand}" : string.Empty) +
-            (entry.Dead ? $"\r\n{entry.DeadReason}" : string.Empty));
+        // The row tooltip carries the registry detail; over the bin it names the program it will remove.
+        row.ActionHoverChanged += (_, over) =>
+            _tips.SetToolTip(row, over ? $"UNINSTALL {entry.DisplayName}" : details);
+
+        row.ActionClicked += _ => Uninstall(entry);
+        _tips.SetToolTip(row, details);
 
         return row;
     }
 
-    /// <summary>Uninstalling is one program at a time, so a working entry behaves like a radio button.</summary>
-    private void SelectOnly(ToggleRow target)
+    /// <summary>The row's bin starts that program's own uninstaller directly; no tick, no toolbar step.</summary>
+    private void Uninstall(ProgramEntry entry)
     {
-        foreach ((ToggleRow Row, ProgramEntry Entry) pair in _rows)
+        if (_busy) return;
+
+        if (!entry.HasUninstaller)
         {
-            if (pair.Row == target || pair.Entry.Dead) continue;
-            pair.Row.Checked = false;
-        }
-    }
-
-    private ProgramEntry? SelectedApp() => _rows
-        .Where(pair => !pair.Entry.Dead && pair.Row.Checked)
-        .Select(pair => pair.Entry)
-        .FirstOrDefault();
-
-    private void UninstallSelected()
-    {
-        ProgramEntry? entry = SelectedApp();
-
-        if (entry is null)
-        {
-            UpdateStatus("tick a program to uninstall first", Theme.Warn);
+            UpdateStatus($"{Theme.Truncate(entry.DisplayName, 40)} has no uninstaller registered", Theme.Warn);
             return;
         }
 
@@ -270,14 +256,7 @@ internal sealed class ProgramsPage : PageBase
 
     private void SyncButtons()
     {
-        ProgramEntry? app = SelectedApp();
         int dead = _rows.Count(pair => pair.Entry.Dead && pair.Row.Checked);
-
-        _uninstall.Text = app is null
-            ? "UNINSTALL"
-            : $"UNINSTALL {Theme.Truncate(app.DisplayName.ToUpperInvariant(), 17)}";
-        _uninstall.Enabled = !_busy && app is not null && app.HasUninstaller;
-        _uninstall.Invalidate();
 
         _clean.Text = dead == 0 ? "REMOVE DEAD" : $"REMOVE DEAD ({dead})";
         _clean.Enabled = !_busy && dead > 0;

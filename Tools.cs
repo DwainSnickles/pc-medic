@@ -4,7 +4,16 @@ using Microsoft.Win32;
 
 namespace PC_Medic;
 
-internal sealed record PortableApp(string Title, string Folder, string ExeName, string Url, string Glyph, string Note, RigMark Mark);
+internal sealed record PortableApp(
+    string Title,
+    string Folder,
+    string ExeName,
+    string Url,
+    string Glyph,
+    string Note,
+    RigMark Mark,
+    string WingetId,
+    string InstallName);
 
 /// <summary>
 /// Windows tool launcher + portable benchmark detection, ported from PC-Utilities.
@@ -14,11 +23,11 @@ internal static class Tools
 {
     public static readonly PortableApp[] Portables =
     {
-        new("CINEBENCH", "CinebenchPortable", "Cinebench.exe", "https://www.maxon.net/en/downloads/cinebench-2024-downloads", "\uE9D9", "CPU render benchmark", RigMark.Cinebench),
-        new("FURMARK", "FurMarkPortable", "FurMark_GUI.exe", "https://geeks3d.com/furmark/downloads/", "\uE7F4", "GPU stress + thermals", RigMark.FurMark),
-        new("HWINFO64", "HardwareInfoPortable", "HWiNFO64.exe", "https://www.hwinfo.com/download/", "\uE9D2", "Sensors + full specs", RigMark.HwInfo),
-        new("CRYSTALDISKMARK", "CrystalDiskMarkPortable", "DiskMark64.exe", "https://portableapps.com/apps/utilities/crystaldiskmark_portable", "\uE958", "Sequential + random I/O", RigMark.DiskMark),
-        new("CRYSTALDISKINFO", "CrystalDiskInfoPortable", "DiskInfo64.exe", "https://portableapps.com/apps/utilities/crystaldiskinfo_portable", "\uE7BA", "Drive health / SMART", RigMark.DiskInfo),
+        new("CINEBENCH", "CinebenchPortable", "Cinebench.exe", "https://www.maxon.net/en/downloads/cinebench-2024-downloads", "\uE9D9", "CPU render benchmark", RigMark.Cinebench, "Maxon.CinebenchR23", "Cinebench"),
+        new("FURMARK", "FurMarkPortable", "FurMark_GUI.exe", "https://geeks3d.com/furmark/downloads/", "\uE7F4", "GPU stress + thermals", RigMark.FurMark, "Geeks3D.FurMark.1", "FurMark"),
+        new("HWINFO64", "HardwareInfoPortable", "HWiNFO64.exe", "https://www.hwinfo.com/download/", "\uE9D2", "Sensors + full specs", RigMark.HwInfo, "REALiX.HWiNFO", "HWiNFO"),
+        new("CRYSTALDISKMARK", "CrystalDiskMarkPortable", "DiskMark64.exe", "https://portableapps.com/apps/utilities/crystaldiskmark_portable", "\uE958", "Sequential + random I/O", RigMark.DiskMark, "CrystalDewWorld.CrystalDiskMark", "CrystalDiskMark"),
+        new("CRYSTALDISKINFO", "CrystalDiskInfoPortable", "DiskInfo64.exe", "https://portableapps.com/apps/utilities/crystaldiskinfo_portable", "\uE7BA", "Drive health / SMART", RigMark.DiskInfo, "CrystalDewWorld.CrystalDiskInfo", "CrystalDiskInfo"),
     };
 
     public static string PortableRoot => AppContext.BaseDirectory;
