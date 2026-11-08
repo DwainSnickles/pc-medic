@@ -101,7 +101,11 @@ internal sealed class UpdatesPage : PageBase
     {
         if (!_firstVisit) return;
         _firstVisit = false;
+
+        // Both halves refresh on arrival: the driver search is the slower one, so it starts with the
+        // winget query rather than waiting for someone to press its own SCAN button.
         ReloadApps(announce: false);
+        ReloadDrivers(announce: false);
     }
 
     private Card BuildColumn(
