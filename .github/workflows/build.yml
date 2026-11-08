@@ -1,0 +1,81 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout PC Medic
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore "PC Medic.csproj"
+
+      - name: Build
+        run: dotnet build "PC Medic.csproj" -c Release --no-restore
+
+      # Self-contained single file so the artifact runs on a machine with no .NET installed.
+      - name: Publish PC Medic
+        run: >
+          dotnet publish "PC Medic.csproj" -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None -p:DebugSymbols=false
+          -o staging/pcmedic
+
+      - name: Checkout Disk Defrag companion
+        uses: actions/checkout@v4
+        with:
+          repository: DwainSnickles/disk-defrag
+          path: companion
+
+      - name: Publish Disk Defrag
+        run: >
+          dotnet publish "companion/DiskDefrag.csproj" -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None -p:DebugSymbols=false
+          -o staging/diskdefrag
+
+      - name: Assemble the portable suite
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force staging/PC-Medic-suite | Out-Null
+          Copy-Item staging/pcmedic/*.exe staging/PC-Medic-suite/ -Force
+          Copy-Item staging/diskdefrag/*.exe staging/PC-Medic-suite/ -Force
+          Copy-Item README.md staging/PC-Medic-suite/ -Force
+          Get-ChildItem staging/PC-Medic-suite | Select-Object Name, Length
+
+      - name: Upload suite (PC Medic + Disk Defrag)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PC-Medic-suite-win-x64
+          path: staging/PC-Medic-suite
+          if-no-files-found: error
+
+      - name: Upload PC Medic only
+        uses: actions/upload-artifact@v4
+        with:
+          name: PC-Medic-win-x64
+          path: staging/pcmedic
+          if-no-files-found: error
+
+      - name: Upload Disk Defrag only
+        uses: actions/upload-artifact@v4
+        with:
+          name: Disk-Defrag-win-x64
+          path: staging/diskdefrag
+          if-no-files-found: error
