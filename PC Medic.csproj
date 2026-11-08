@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>PC_Medic</RootNamespace>
+    <Version>1.0.0</Version>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>pcmedic.ico</ApplicationIcon>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Autoupdater.NET.Official" Version="1.9.3" />
+  </ItemGroup>
+
+  <!-- Disk Defrag is a separate project living in its own folder. -->
+  <ItemGroup>
+    <Compile Remove="DiskDefrag\**" />
+    <EmbeddedResource Remove="DiskDefrag\**" />
+    <None Remove="DiskDefrag\**" />
+  </ItemGroup>
+
+</Project>
