@@ -15,6 +15,7 @@ internal sealed class OverviewPage : PageBase
     private readonly InfoList _profile = new() { RowHeight = 26 };
     private readonly ActivityConsole _console = new();
     private readonly SystemMonitor _monitor = new();
+    private readonly ScanOverlay _loading = new() { Visible = false };
     private string _address = string.Empty;
     private int _ticks;
     private readonly NeonButton _optimize = Button("OPTIMIZE SLEEP", primary: true);
@@ -38,6 +39,13 @@ internal sealed class OverviewPage : PageBase
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 268));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
+
+        // Page-level plate for the dashboard actions: they block long enough that a frozen grid reads as a hang.
+        Controls.Add(_loading);
+        void LayoutLoading() => _loading.Bounds = ClientRectangle;
+        Resize += (_, _) => LayoutLoading();
+        LayoutLoading();
+        _loading.BringToFront();
 
         var tiles = new TableLayoutPanel
         {
@@ -129,6 +137,7 @@ internal sealed class OverviewPage : PageBase
         {
             _optimize.Enabled = false;
             using IDisposable busy = Working();
+            using IDisposable plate = _loading.Busy();
             ActivityLog.Info("Optimize Sleep requested from the dashboard.");
             await PowerService.OptimizeSleepAsync();
             _optimize.Enabled = true;
@@ -149,6 +158,7 @@ internal sealed class OverviewPage : PageBase
         {
             _freeMemory.Enabled = false;
             using IDisposable busy = Working();
+            using IDisposable plate = _loading.Busy();
             ActivityLog.Info("Trimming process working sets\u2026");
 
             MemoryReport report = await Task.Run(MemoryService.Trim);
@@ -167,6 +177,7 @@ internal sealed class OverviewPage : PageBase
         {
             _cleanDisk.Enabled = false;
             using IDisposable busy = Working();
+            using IDisposable plate = _loading.Busy();
             ActivityLog.Info($"Cleaning temp files on {MachineInfo.SystemDrive}\u2026");
 
             CleanReport report = await Task.Run(DiskCleanupService.Clean);

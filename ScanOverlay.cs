@@ -48,8 +48,26 @@ internal sealed class ScanOverlay : SkinnedControl
     public void End()
     {
         _pulsing = false;
+        if (IsDisposed) return;
+
         _pulse.Stop();
         Visible = false;
+    }
+
+    /// <summary>Shows the plate for the life of the returned scope, so an exception cannot leave it stuck.</summary>
+    public IDisposable Busy()
+    {
+        Begin();
+        return new Scope(this);
+    }
+
+    private sealed class Scope : IDisposable
+    {
+        private readonly ScanOverlay _owner;
+
+        public Scope(ScanOverlay owner) => _owner = owner;
+
+        public void Dispose() => _owner.End();
     }
 
     private void SetPercent(int value)

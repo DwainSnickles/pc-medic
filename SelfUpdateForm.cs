@@ -17,6 +17,7 @@ internal sealed class SelfUpdateForm : Form
     private readonly NeonButton _install = new() { Text = "DOWNLOAD & INSTALL", Size = new Size(186, 32), Primary = true };
     private readonly NeonButton _close = new() { Text = "CLOSE", Size = new Size(96, 32) };
 
+    private readonly ScanOverlay _loading = new() { Visible = false };
     private SelfUpdateInfo? _info;
     private bool _busy;
 
@@ -71,6 +72,11 @@ internal sealed class SelfUpdateForm : Form
         {
             Controls.Add(button);
         }
+
+        // Covers the version readouts and notes while work runs; the status line and buttons stay visible.
+        Controls.Add(_loading);
+        _loading.SetBounds(12, 88, ClientSize.Width - 24, 156);
+        _loading.BringToFront();
 
         _check.SetBounds(30, 316, _check.Width, _check.Height);
         _close.SetBounds(ClientSize.Width - 30 - _close.Width, 316, _close.Width, _close.Height);
@@ -133,6 +139,7 @@ internal sealed class SelfUpdateForm : Form
         _install.Enabled = false;
         SetStatus($"Checking {UpdateService.FeedHost}\u2026", Theme.TextDim);
         using IDisposable busy = Busy.Enter(this);
+        using IDisposable plate = _loading.Busy();
 
         SelfUpdateInfo info = await UpdateService.CheckAsync();
         if (IsDisposed) return;
@@ -162,6 +169,7 @@ internal sealed class SelfUpdateForm : Form
         _install.Enabled = false;
         SetStatus("Downloading the package\u2026", Theme.TextDim);
         using IDisposable busy = Busy.Enter(this);
+        using IDisposable plate = _loading.Busy();
 
         var progress = new Progress<string>(text => SetStatus($"Downloading {text}", Theme.TextDim));
         (bool ok, string path, string message) = await UpdateService.DownloadAsync(info, progress);
