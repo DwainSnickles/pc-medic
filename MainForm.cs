@@ -184,10 +184,8 @@ internal sealed class MainForm : Form
         Label tagline = MakeLabel("SYSTEM OPTIMIZER", Theme.Kicker, Theme.Alpha(Theme.Accent, 215));
         tagline.Location = new Point(72, 48);
 
-        Label build = MakeLabel("PORTABLE 1.0 \u2022 CHECK UPDATES", Theme.Kicker, Theme.TextDim);
+        Label build = MakeLabel("PORTABLE 1.0", Theme.Kicker, Theme.TextDim);
         build.Location = new Point(22, 70);
-        build.Cursor = Cursors.Hand;
-        build.Click += (_, _) => ShowSelfUpdate();
 
         var divider = new Panel
         {
@@ -203,7 +201,7 @@ internal sealed class MainForm : Form
         _sidebar.Controls.Add(build);
         _sidebar.Controls.Add(divider);
 
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 126, BackColor = Theme.Surface };
+        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 168, BackColor = Theme.Surface };
         bottom.Paint += (_, e) =>
         {
             using var pen = new Pen(Theme.Border);
@@ -239,12 +237,23 @@ internal sealed class MainForm : Form
             }
         };
 
+        // The update check lives here as a button rather than riding along in the kicker line.
+        var checkUpdates = new NeonButton
+        {
+            Text = "CHECK UPDATES",
+            Size = new Size(198, 32),
+            Location = new Point(22, 96),
+        };
+
+        checkUpdates.Click += (_, _) => ShowSelfUpdate();
+
         Label note = MakeLabel("USB-friendly \u2022 nothing installed", Theme.Kicker, Theme.TextDim);
-        note.Location = new Point(24, 100);
+        note.Location = new Point(24, 138);
 
         bottom.Controls.Add(elevation);
         bottom.Controls.Add(state);
         bottom.Controls.Add(elevate);
+        bottom.Controls.Add(checkUpdates);
         bottom.Controls.Add(note);
         _sidebar.Controls.Add(bottom);
 
@@ -328,8 +337,7 @@ internal sealed class MainForm : Form
             ("tweaks", "\uE713", "Tweaks"),
             ("programs", "\uE7B8", "Programs"),
             ("updates", "\uE896", "Updates"),
-            ("registry", "\uE721", "Registry Audit"),
-            ("shortcuts", "\uE71B", "Shortcut Audit"),
+            ("audit", "\uE721", "Audit"),
             ("benchmarks", "\uE9D9", "Benchmarks"),
             ("console", "\uE756", "Command Shell"),
         };
@@ -418,8 +426,7 @@ internal sealed class MainForm : Form
         "tweaks" => new TweaksPage(),
         "programs" => new ProgramsPage(),
         "updates" => new UpdatesPage(),
-        "registry" => new RegistryPage(),
-        "shortcuts" => new ShortcutPage(),
+        "audit" => new AuditPage(),
         "benchmarks" => new BenchPage(),
         "console" => new ConsolePage(),
         _ => new OverviewPage(),

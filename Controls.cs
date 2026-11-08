@@ -786,18 +786,23 @@ internal sealed class ToggleRow : SkinnedControl
 
         int reserved = _actionText.Length > 0 ? ActionBounds.Width + 12 : 0;
         int textWidth = Math.Max(40, Width - 90 - reserved);
+        bool badge = !string.IsNullOrEmpty(BadgeText);
+
+        // The badge sits after the title, so the title box gives up that room: a long name ellipsises
+        // instead of running underneath the pill.
+        int titleWidth = Math.Max(40, textWidth - (badge ? 58 : 0));
         TextRenderer.DrawText(
             g,
             Title,
             Theme.UiBold,
-            new Rectangle(34, 10, textWidth, 20),
+            new Rectangle(34, 10, titleWidth, 20),
             interactive ? Theme.Text : Theme.TextDim,
             TextFormatFlags.NoPrefix | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
-        if (!string.IsNullOrEmpty(BadgeText))
+        if (badge)
         {
-            int titleWidth = TextRenderer.MeasureText(Title, Theme.UiBold).Width;
-            var badgeRect = new Rectangle(34 + Math.Min(titleWidth + 10, textWidth - 46), 13, 44, 15);
+            int drawn = Math.Min(TextRenderer.MeasureText(Title, Theme.UiBold).Width, titleWidth);
+            var badgeRect = new Rectangle(34 + drawn + 10, 13, 44, 15);
             using GraphicsPath pill = Theme.Round(badgeRect, 4f);
             using var fill = new SolidBrush(Theme.Alpha(BadgeTone, 24));
             using var pen = new Pen(Theme.Alpha(BadgeTone, 90));

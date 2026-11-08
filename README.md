@@ -27,8 +27,7 @@ Maintenance page.
 | **Tweaks** | Explorer and visual-effects tweaks, each written with a backup so it can be reverted. |
 | **Programs** | Installed applications from both registry hives, with uninstall and repair routing. |
 | **Updates** | `winget` application upgrades, a per-app **UNINSTALL** for software you no longer want, and Windows Update driver scans with a shared badge count. |
-| **Registry Audit** | Dead `App Paths`, orphaned uninstall keys and stale file associations, removable per item. |
-| **Shortcut Audit** | Resolves ~25,000 shortcuts with `IShellLinkW`, flags dead links, recycles them, and keeps a persistent "not dead" list. |
+| **Audit** | One page, two audits: dead `App Paths`, orphaned uninstall keys and stale file associations on the left, ~25,000 shortcuts resolved with `IShellLinkW` on the right. Removable per item, with a `.reg` backup and a persistent "not dead" list. |
 | **Benchmarks** | Quick CPU and disk sanity runs. |
 | **Command Shell** | An embedded console for the tools the UI does not wrap. |
 
