@@ -1,5 +1,7 @@
 # PC Medic — portable Windows system optimizer and PC cleaner
 
+[![Download the portable build](https://img.shields.io/badge/download-portable%20zip-2ea043?logo=windows&logoColor=white)](https://github.com/DwainSnickles/pc-medic/releases/latest)
+
 **PC Medic** is a portable Windows 10/11 maintenance suite for people who want the jobs
 "Advanced SystemCare", CCleaner, Glary Utilities or Ashampoo WinOptimizer do — without a
 background service, an installer, telemetry or a subscription. One folder, one executable,
