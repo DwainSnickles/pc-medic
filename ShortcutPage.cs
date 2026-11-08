@@ -14,7 +14,7 @@ internal sealed class ShortcutPage : PageBase
     private readonly NeonButton _selectAll = Button("SELECT ALL", width: 104, height: 30);
     private readonly NeonButton _keep = Button("MARK NOT DEAD", width: 166, height: 30);
     private readonly NeonButton _recycle = Button("RECYCLE TO BIN", primary: true, width: 172, height: 30);
-    private readonly ScanProgressBar _progress = new() { Height = 3, Visible = false };
+    private readonly ScanOverlay _loading = new() { Visible = false };
     private readonly List<(ToggleRow Row, ShortcutEntry Entry)> _rows = new();
     private ShortcutScan _scan = new(Array.Empty<ShortcutEntry>(), 0, 0, 0);
     private bool _busy;
@@ -35,7 +35,6 @@ internal sealed class ShortcutPage : PageBase
         toolbar.Controls.Add(_status);
 
         foreach (NeonButton button in new[] { _rescan, _selectAll, _keep, _recycle }) toolbar.Controls.Add(button);
-        toolbar.Controls.Add(_progress);
 
         void LayoutToolbar()
         {
@@ -49,7 +48,6 @@ internal sealed class ShortcutPage : PageBase
             right -= _recycle.Width + 8;
             _recycle.SetBounds(right, 4, _recycle.Width, 30);
             _status.SetBounds(2, 13, Math.Max(90, _recycle.Left - 14), 16);
-            _progress.SetBounds(2, 36, Math.Max(20, toolbar.ClientSize.Width - 4), 3);
         }
 
         toolbar.Resize += (_, _) => LayoutToolbar();
@@ -60,6 +58,13 @@ internal sealed class ShortcutPage : PageBase
         _list.AutoScroll = true;
         _list.BackColor = Theme.Surface;
         card.Controls.Add(_list);
+
+        // Bounds rather than Dock: the list already fills the card, and two Fill siblings fight over the space.
+        card.Controls.Add(_loading);
+        void LayoutCard() => _loading.Bounds = card.DisplayRectangle;
+        card.Resize += (_, _) => LayoutCard();
+        LayoutCard();
+        _loading.BringToFront();
 
         var footer = new Panel { Dock = DockStyle.Bottom, Height = 26, BackColor = Theme.Bg };
         _footer.AutoSize = true;
@@ -114,15 +119,13 @@ internal sealed class ShortcutPage : PageBase
         _status.Text = "RESOLVING .LNK TARGETS\u2026";
         using IDisposable busy = Working();
 
-        _progress.Value = 0;
-        _progress.Visible = true;
+        _loading.Percent = 0;
+        _loading.Visible = true;
+        _loading.BringToFront();
 
         var progress = new Progress<int>(percent =>
         {
-            if (IsDisposed) return;
-
-            _status.Text = $"RESOLVING .LNK TARGETS\u2026 {percent}%";
-            _progress.Value = percent;
+            if (!IsDisposed) _loading.Percent = percent;
         });
         _status.ForeColor = Theme.TextDim;
         SetButtonsEnabled(false);
@@ -146,7 +149,7 @@ internal sealed class ShortcutPage : PageBase
         }
         finally
         {
-            _progress.Visible = false;
+            _loading.Visible = false;
             _busy = false;
             SetButtonsEnabled(true);
             UpdateStatus(note);
