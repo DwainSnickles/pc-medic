@@ -214,9 +214,12 @@ internal static class UpdateService
         string body = root.TryGetProperty("body", out JsonElement bodyElement) ? bodyElement.GetString() ?? string.Empty : string.Empty;
         string? assetUrl = null;
         string? assetName = null;
+        int bestRank = int.MaxValue;
 
         if (root.TryGetProperty("assets", out JsonElement assets) && assets.ValueKind == JsonValueKind.Array)
         {
+            // Assets come back alphabetically, so "first zip" is the companion tool. Rank them instead:
+            // the app package wins over the suite zip, which wins over anything else attached.
             foreach (JsonElement asset in assets.EnumerateArray())
             {
                 string name = asset.TryGetProperty("name", out JsonElement nameElement) ? nameElement.GetString() ?? string.Empty : string.Empty;
@@ -226,13 +229,30 @@ internal static class UpdateService
                 if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
                     !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) continue;
 
+                int rank = AssetRank(name);
+                if (rank >= bestRank) continue;
+
+                bestRank = rank;
                 assetName = name;
                 assetUrl = url;
-                if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) break;
             }
         }
 
         return Describe(current, Normalise(tag), assetUrl, assetName, body);
+    }
+
+    /// <summary>Lower wins: the single-app zip, then a bare exe, then the suite zip, then any other package.</summary>
+    private static int AssetRank(string name)
+    {
+        string key = name.ToLowerInvariant().Replace("-", string.Empty).Replace(" ", string.Empty);
+        bool zip = key.EndsWith(".zip", StringComparison.Ordinal);
+        bool ours = key.Contains("pcmedic");
+
+        if (zip && ours && !key.Contains("suite")) return 0;
+        if (!zip && ours) return 1;
+        if (zip && ours) return 2;
+        if (zip) return 3;
+        return 4;
     }
 
     private static SelfUpdateInfo Describe(string current, string latest, string? url, string? name, string notes)
