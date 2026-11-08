@@ -522,10 +522,13 @@ internal sealed class AuditPage : PageBase
                 : $"REVIEW  {Theme.Truncate(entry.Detail, 80)}",
             BadgeText = dead ? "DEAD" : "REVIEW",
             BadgeTone = dead ? Theme.Bad : Theme.TextDim,
-            Tone = dead ? Theme.Bad : Theme.TextDim,
+            // A ticked review row is the operator's judgement rather than a proven finding, so it lights
+            // amber instead of red and stays distinguishable from a dead row at a glance.
+            Tone = dead ? Theme.Bad : Theme.Warn,
             Checked = false,
-            // Review rows stay clickable so their folder opens, but their switch must not move.
-            Locked = !dead,
+            // Every row can be ticked: a review row is the operator's call to make, so the switch has
+            // to move once they have looked at the folder.
+            Locked = false,
             Clickable = true,
             Tag = entry,
         };
@@ -533,23 +536,25 @@ internal sealed class AuditPage : PageBase
         row.Toggled += (_, _) => SyncShortcutButtons();
         row.RowClicked += _ => OpenFolder(entry);
 
-        _tips.SetToolTip(
-            row,
-            $"{entry.FilePath}\r\n" +
-            (string.IsNullOrEmpty(entry.Target) ? entry.Detail : $"Target: {entry.Target}") +
-            (dead
-                ? "\r\nClick the row to open its folder; tick it to recycle it or mark it not dead."
-                : "\r\nClick the row to open its folder. It cannot be ticked: no target was resolved."));
+        // The subtitle ellipsises the reason, so the tooltip carries all of it: a review row says what
+        // stopped it resolving, not just that it did not.
+        string reason = string.IsNullOrWhiteSpace(entry.Detail) ? "the target could not be resolved" : entry.Detail;
+        string details = dead
+            ? $"{entry.FilePath}\r\nTarget: {entry.Target}" +
+              "\r\nClick the row to open its folder; tick it to recycle it or mark it not dead."
+            : $"{entry.FilePath}\r\nREVIEW: {reason}" +
+              "\r\nNo target was resolved: click the row to open its folder, then tick it to recycle it or mark it not dead.";
+
+        _tips.SetToolTip(row, details);
 
         return row;
     }
 
     private void ToggleAllShortcuts()
     {
-        List<ToggleRow> rows = _shortcutRows
-            .Where(pair => pair.Entry.Status == ShortcutStatus.Broken)
-            .Select(pair => pair.Row)
-            .ToList();
+        // Review rows are included: seeing them is the review, and the operator decides whether to
+        // recycle an unresolved link or mark it as still wanted.
+        List<ToggleRow> rows = _shortcutRows.Select(pair => pair.Row).ToList();
 
         if (rows.Count == 0) return;
 
