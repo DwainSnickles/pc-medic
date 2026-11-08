@@ -2,6 +2,7 @@
 bin/
 obj/
 staging/
+artifacts/
 
 # Visual Studio
 .vs/
