@@ -41,6 +41,18 @@ Maintenance page.
 - **No fake numbers** — every figure comes from the OS: `GlobalMemoryStatusEx`,
   `FSCTL_GET_VOLUME_BITMAP`, `powercfg`, `winget`, performance counters.
 
+## Loading and progress
+
+Long operations never leave the page blank. They cover their results area with a centred
+**LOADING ##%** plate: the shortcut audit, the registry audit and both update scans use it, as do
+temp cleanup, the memory trim and the self-update check.
+
+Where the work reports progress, that number is real — the audits know how many links or keys they
+still have to resolve and count up by that share. Where the work is one opaque call (`winget`, the
+Windows Update agent, `powercfg`, a temp-file sweep), nothing can be measured, so the bar eases
+toward a ceiling and resolves only when the call returns. It never reaches 100% before the work is
+done, and the plate hides itself again the moment the results are ready.
+
 ## Requirements
 
 - Windows 10 or 11 (x64)
