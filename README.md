@@ -65,4 +65,9 @@ This project is the practical answer to searches such as:
 
 `windows` `system-optimizer` `pc-cleaner` `pc-optimizer` `maintenance` `registry-cleaner`
 `startup-manager` `disk-cleanup` `disk-defrag` `winforms` `dotnet` `windows-11` `portable`
-`advanced-systemcare-alternative` `ccleaner-alternative`
+`advanced-systemcare-alternative` `ccleaner-alternative` `freebuff`
+
+---
+
+Built with **[Freebuff](https://freebuff.com)** — the AI coding agent that builds and
+maintains this suite.
