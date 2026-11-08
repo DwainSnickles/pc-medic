@@ -80,20 +80,29 @@ internal static class RegistryService
         "PCMedic",
         "registry-backups");
 
-    public static List<RegistryIssue> Scan()
+    public static List<RegistryIssue> Scan(IProgress<int>? progress = null)
     {
         var issues = new List<RegistryIssue>();
+
+        progress?.Report(0);
 
         ScanUninstall(issues, RegistryHive.LocalMachine, UninstallKey);
         ScanUninstall(issues, RegistryHive.LocalMachine, UninstallKey32);
         ScanUninstall(issues, RegistryHive.CurrentUser, UserUninstallKey);
 
+        progress?.Report(30);
+
         ScanAppPaths(issues, RegistryHive.LocalMachine, AppPathsKey);
         ScanAppPaths(issues, RegistryHive.LocalMachine, AppPathsKey32);
         ScanAppPaths(issues, RegistryHive.CurrentUser, UserAppPathsKey);
 
+        progress?.Report(60);
+
         ScanSharedDlls(issues);
+        progress?.Report(80);
+
         ScanAutorun(issues);
+        progress?.Report(100);
 
         return issues
             .OrderBy(issue => issue.ReviewOnly)

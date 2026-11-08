@@ -96,12 +96,17 @@ internal sealed class RegistryPage : PageBase
         _busy = true;
         _status.Text = "SCANNING HKLM + HKCU\u2026";
         using IDisposable busy = Working();
+
+        var progress = new Progress<int>(percent =>
+        {
+            if (!IsDisposed) _status.Text = $"SCANNING HKLM + HKCU\u2026 {percent}%";
+        });
         _status.ForeColor = Theme.TextDim;
         SetButtonsEnabled(false);
 
         try
         {
-            List<RegistryIssue> issues = await Task.Run(RegistryService.Scan);
+            List<RegistryIssue> issues = await Task.Run(() => RegistryService.Scan(progress));
             _issues = issues;
             Rebuild();
 

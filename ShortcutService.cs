@@ -89,40 +89,55 @@ internal static class ShortcutService
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern int SHFileOperationW(ref ShFileOpStruct operation);
 
-    public static ShortcutScan Scan()
+    public static ShortcutScan Scan(IProgress<int>? progress = null)
     {
         var problems = new List<ShortcutEntry>();
-        int scanned = 0;
-        int healthy = 0;
+        var targets = new List<(string File, string Area)>();
 
-        HashSet<string> kept = LoadKept();
-        int suppressed = 0;
-
+        // Collect the work up front so the percentage has a real denominator: walking the folders is
+        // cheap next to resolving every link through IShellLinkW.
         foreach ((string area, List<string> folders) in Roots())
         {
             foreach (string folder in folders)
             {
                 foreach (string file in Enumerate(folder))
                 {
-                    scanned++;
-
-                    ShortcutEntry entry = Resolve(file, area);
-                    if (entry.Status == ShortcutStatus.Valid)
-                    {
-                        healthy++;
-                        continue;
-                    }
-
-                    if (kept.Contains(Key(entry)))
-                    {
-                        suppressed++;
-                        continue;
-                    }
-
-                    problems.Add(entry);
+                    targets.Add((file, area));
                 }
             }
         }
+
+        int scanned = 0;
+        int healthy = 0;
+
+        HashSet<string> kept = LoadKept();
+        int suppressed = 0;
+        int total = Math.Max(1, targets.Count);
+
+        progress?.Report(0);
+
+        foreach ((string file, string area) in targets)
+        {
+            scanned++;
+
+            ShortcutEntry entry = Resolve(file, area);
+            if (entry.Status == ShortcutStatus.Valid)
+            {
+                healthy++;
+            }
+            else if (kept.Contains(Key(entry)))
+            {
+                suppressed++;
+            }
+            else
+            {
+                problems.Add(entry);
+            }
+
+            if (scanned % 25 == 0) progress?.Report(scanned * 100 / total);
+        }
+
+        progress?.Report(100);
 
         return new ShortcutScan(problems, scanned, healthy, suppressed);
     }
@@ -131,7 +146,7 @@ internal static class ShortcutService
     /// Runs the audit on a dedicated STA thread. IShellLinkW is apartment-threaded, so resolving tens
     /// of thousands of links from a thread-pool thread stalls instead of finishing.
     /// </summary>
-    public static Task<ShortcutScan> ScanAsync()
+    public static Task<ShortcutScan> ScanAsync(IProgress<int>? progress = null)
     {
         var completion = new TaskCompletionSource<ShortcutScan>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -139,7 +154,7 @@ internal static class ShortcutService
         {
             try
             {
-                completion.TrySetResult(Scan());
+                completion.TrySetResult(Scan(progress));
             }
             catch (Exception ex)
             {

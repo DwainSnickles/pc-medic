@@ -110,12 +110,17 @@ internal sealed class ShortcutPage : PageBase
         _busy = true;
         _status.Text = "RESOLVING .LNK TARGETS\u2026";
         using IDisposable busy = Working();
+
+        var progress = new Progress<int>(percent =>
+        {
+            if (!IsDisposed) _status.Text = $"RESOLVING .LNK TARGETS\u2026 {percent}%";
+        });
         _status.ForeColor = Theme.TextDim;
         SetButtonsEnabled(false);
 
         try
         {
-            ShortcutScan scan = await ShortcutService.ScanAsync();
+            ShortcutScan scan = await ShortcutService.ScanAsync(progress);
             _scan = scan;
             Rebuild();
 
