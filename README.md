@@ -11,9 +11,9 @@ Companion project: **[Disk Defrag](https://github.com/DwainSnickles/disk-defrag)
 separate cluster-map defragmentation tool that lives beside PC Medic and launches from its
 Maintenance page.
 
-![PC Medic Shortcut Audit mid-scan: a centred LOADING 33% plate with a filling progress bar covers the findings card while the scan resolves links](docs/pc-medic.png)
-
 ![PC Medic overview: live CPU, memory, system drive, update and uptime tiles with one-click actions, machine profile and activity feed](docs/pc-medic-overview.png)
+
+![PC Medic Shortcut Audit mid-scan: a centred LOADING 33% plate with a filling progress bar covers the findings card while the scan resolves links](docs/pc-medic.png)
 
 ## What it does
 
