@@ -109,6 +109,7 @@ internal sealed class ShortcutPage : PageBase
 
         _busy = true;
         _status.Text = "RESOLVING .LNK TARGETS\u2026";
+        using IDisposable busy = Working();
         _status.ForeColor = Theme.TextDim;
         SetButtonsEnabled(false);
 

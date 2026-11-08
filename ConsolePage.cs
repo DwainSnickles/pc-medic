@@ -186,6 +186,7 @@ internal sealed class ConsolePage : PageBase
 
         bool powershell = _powershell;
         _run.Enabled = false;
+        using IDisposable busy = Working();
         Append($"{(powershell ? "PS> " : "> ")}{command}");
         ActivityLog.Info($"{(powershell ? "PowerShell" : "Command")}: {command}");
 

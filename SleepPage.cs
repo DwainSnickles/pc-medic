@@ -134,6 +134,7 @@ internal sealed class SleepPage : PageBase
         _apply.Click += async (_, _) =>
         {
             _apply.Enabled = false;
+            using IDisposable busy = Working();
             SetHero("Applying optimized sleep ladder\u2026", Theme.TextDim);
             List<PowerStep> steps = await PowerService.OptimizeSleepAsync();
             int ok = steps.Count(step => step.Ok);
@@ -147,6 +148,7 @@ internal sealed class SleepPage : PageBase
         _restore.Click += async (_, _) =>
         {
             _restore.Enabled = false;
+            using IDisposable busy = Working();
             (bool ok, string message) = await Task.Run(PowerService.RestoreBackup);
             ActivityLog.Write(ok ? LogLevel.Success : LogLevel.Warn, message);
             SetHero(message, ok ? Theme.Good : Theme.Warn);
@@ -178,6 +180,7 @@ internal sealed class SleepPage : PageBase
     {
         if (_loading) return;
         _loading = true;
+        using IDisposable busy = Working();
 
         try
         {

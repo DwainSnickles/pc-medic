@@ -59,6 +59,9 @@ internal abstract class PageBase : UserControl
         }
     }
 
+    /// <summary>Wait cursor while a scan, load or install runs; dispose it when the work finishes.</summary>
+    protected IDisposable Working() => Busy.Enter(this);
+
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         e.Graphics.Clear(Theme.Bg);

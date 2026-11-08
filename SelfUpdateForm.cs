@@ -132,6 +132,7 @@ internal sealed class SelfUpdateForm : Form
         _check.Enabled = false;
         _install.Enabled = false;
         SetStatus($"Checking {UpdateService.FeedHost}\u2026", Theme.TextDim);
+        using IDisposable busy = Busy.Enter(this);
 
         SelfUpdateInfo info = await UpdateService.CheckAsync();
         if (IsDisposed) return;
@@ -160,6 +161,7 @@ internal sealed class SelfUpdateForm : Form
         _check.Enabled = false;
         _install.Enabled = false;
         SetStatus("Downloading the package\u2026", Theme.TextDim);
+        using IDisposable busy = Busy.Enter(this);
 
         var progress = new Progress<string>(text => SetStatus($"Downloading {text}", Theme.TextDim));
         (bool ok, string path, string message) = await UpdateService.DownloadAsync(info, progress);

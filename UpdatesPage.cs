@@ -173,6 +173,7 @@ internal sealed class UpdatesPage : PageBase
         _scanApps.Enabled = false;
         SyncButtons();
         SetAppStatus(_winget is null ? "WINGET NOT FOUND" : "QUERYING WINGET\u2026", Theme.TextDim);
+        using IDisposable busy = Working();
 
         try
         {
@@ -218,6 +219,7 @@ internal sealed class UpdatesPage : PageBase
         _scanDrivers.Enabled = false;
         SyncButtons();
         SetDriverStatus("ASKING WINDOWS UPDATE\u2026", Theme.TextDim);
+        using IDisposable busy = Working();
 
         try
         {
@@ -363,6 +365,7 @@ internal sealed class UpdatesPage : PageBase
         _busyApps = true;
         _scanApps.Enabled = false;
         SetRowsEnabled(_appRows.Select(pair => pair.Row), false);
+        using IDisposable busy = Working();
         SyncButtons();
 
         int applied = 0;
@@ -417,6 +420,7 @@ internal sealed class UpdatesPage : PageBase
         SetRowsEnabled(_driverRows.Select(pair => pair.Row), false);
         SyncButtons();
         SetDriverStatus("DOWNLOADING + INSTALLING\u2026", Theme.Text);
+        using IDisposable busy = Working();
 
         try
         {

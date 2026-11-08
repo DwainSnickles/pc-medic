@@ -128,6 +128,7 @@ internal sealed class OverviewPage : PageBase
         _optimize.Click += async (_, _) =>
         {
             _optimize.Enabled = false;
+            using IDisposable busy = Working();
             ActivityLog.Info("Optimize Sleep requested from the dashboard.");
             await PowerService.OptimizeSleepAsync();
             _optimize.Enabled = true;
@@ -147,6 +148,7 @@ internal sealed class OverviewPage : PageBase
         _freeMemory.Click += async (_, _) =>
         {
             _freeMemory.Enabled = false;
+            using IDisposable busy = Working();
             ActivityLog.Info("Trimming process working sets\u2026");
 
             MemoryReport report = await Task.Run(MemoryService.Trim);
@@ -164,6 +166,7 @@ internal sealed class OverviewPage : PageBase
         _cleanDisk.Click += async (_, _) =>
         {
             _cleanDisk.Enabled = false;
+            using IDisposable busy = Working();
             ActivityLog.Info($"Cleaning temp files on {MachineInfo.SystemDrive}\u2026");
 
             CleanReport report = await Task.Run(DiskCleanupService.Clean);
@@ -219,6 +222,7 @@ internal sealed class OverviewPage : PageBase
     private async Task ToggleCpuCeilingAsync()
     {
         _coolCpu.Enabled = false;
+        using IDisposable busy = Working();
 
         bool capped = await Task.Run(() => PowerService.CpuCapped);
         (bool ok, string message) = await Task.Run(() =>
