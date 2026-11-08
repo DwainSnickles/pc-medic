@@ -8,6 +8,8 @@ internal sealed class UpdatesPage : PageBase
 {
     private readonly BufferedPanel _apps = new();
     private readonly BufferedPanel _drivers = new();
+    private readonly ScanOverlay _appsLoading = new() { Visible = false };
+    private readonly ScanOverlay _driversLoading = new() { Visible = false };
     private readonly Label _appStatus = new();
     private readonly Label _driverStatus = new();
     private readonly Label _note = new();
@@ -41,10 +43,10 @@ internal sealed class UpdatesPage : PageBase
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
 
-        Card appsCard = BuildColumn("APPLICATIONS", "WINGET", _apps, _appStatus, _scanApps, _upgrade);
+        Card appsCard = BuildColumn("APPLICATIONS", "WINGET", _apps, _appStatus, _scanApps, _upgrade, _appsLoading);
         appsCard.Margin = new Padding(0, 0, 6, 8);
 
-        Card driverCard = BuildColumn("DRIVERS", "WINDOWS UPDATE", _drivers, _driverStatus, _scanDrivers, _install);
+        Card driverCard = BuildColumn("DRIVERS", "WINDOWS UPDATE", _drivers, _driverStatus, _scanDrivers, _install, _driversLoading);
         driverCard.Margin = new Padding(6, 0, 0, 8);
 
         root.Controls.Add(appsCard, 0, 0);
@@ -99,7 +101,14 @@ internal sealed class UpdatesPage : PageBase
         ReloadApps(announce: false);
     }
 
-    private Card BuildColumn(string header, string kicker, BufferedPanel list, Label status, NeonButton scan, NeonButton action)
+    private Card BuildColumn(
+        string header,
+        string kicker,
+        BufferedPanel list,
+        Label status,
+        NeonButton scan,
+        NeonButton action,
+        ScanOverlay loading)
     {
         Card card = Panel(header, kicker);
         card.Margin = new Padding(0);
@@ -150,6 +159,21 @@ internal sealed class UpdatesPage : PageBase
 
         inner.Controls.Add(toolbar, 0, 0);
         inner.Controls.Add(list, 0, 1);
+
+        // A sibling of the table, not a child: the layout engine would place and size it as a cell.
+        card.Controls.Add(loading);
+
+        void LayoutLoading()
+        {
+            if (card.IsDisposed || list.IsDisposed || !list.IsHandleCreated) return;
+            loading.Bounds = new Rectangle(card.PointToClient(list.PointToScreen(Point.Empty)), list.Size);
+        }
+
+        list.SizeChanged += (_, _) => LayoutLoading();
+        card.Layout += (_, _) => LayoutLoading();
+        LayoutLoading();
+        loading.BringToFront();
+
         card.Controls.Add(inner);
 
         return card;
@@ -174,6 +198,7 @@ internal sealed class UpdatesPage : PageBase
         SyncButtons();
         SetAppStatus(_winget is null ? "WINGET NOT FOUND" : "QUERYING WINGET\u2026", Theme.TextDim);
         using IDisposable busy = Working();
+        _appsLoading.Begin();
 
         try
         {
@@ -205,6 +230,7 @@ internal sealed class UpdatesPage : PageBase
         }
         finally
         {
+            _appsLoading.End();
             _busyApps = false;
             _scanApps.Enabled = true;
             SyncButtons();
@@ -220,6 +246,7 @@ internal sealed class UpdatesPage : PageBase
         SyncButtons();
         SetDriverStatus("ASKING WINDOWS UPDATE\u2026", Theme.TextDim);
         using IDisposable busy = Working();
+        _driversLoading.Begin();
 
         try
         {
@@ -251,6 +278,7 @@ internal sealed class UpdatesPage : PageBase
         }
         finally
         {
+            _driversLoading.End();
             _busyDrivers = false;
             _scanDrivers.Enabled = true;
             SyncButtons();

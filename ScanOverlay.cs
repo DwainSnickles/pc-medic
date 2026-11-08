@@ -3,29 +3,75 @@ using System.Drawing.Drawing2D;
 namespace PC_Medic;
 
 /// <summary>
-/// Centred loading plate for the scan pages. It sits over the findings card while a pass runs and
+/// Centred loading plate for the scan pages. It sits over the findings area while a pass runs and
 /// reports the percentage with a filling bar, so an empty card reads as work in progress.
 /// </summary>
 internal sealed class ScanOverlay : SkinnedControl
 {
+    private readonly System.Windows.Forms.Timer _pulse = new() { Interval = 250 };
     private int _percent;
+    private bool _pulsing;
 
     public ScanOverlay()
     {
         BackColor = Theme.Surface;
+        _pulse.Tick += OnPulse;
     }
 
+    /// <summary>A real percentage stops the estimate: whoever reports it knows better.</summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public int Percent
     {
         get => _percent;
         set
         {
-            int clamped = Math.Clamp(value, 0, 100);
-            if (_percent == clamped) return;
-            _percent = clamped;
-            Invalidate();
+            _pulsing = false;
+            _pulse.Stop();
+            SetPercent(value);
         }
+    }
+
+    /// <summary>
+    /// Shows the plate for work that reports nothing of its own — an external process such as winget —
+    /// easing the number toward a ceiling so the bar never claims completion before the work ends.
+    /// </summary>
+    public void Begin(int percent = 4)
+    {
+        _percent = Math.Clamp(percent, 0, 100);
+        _pulsing = true;
+        _pulse.Start();
+        Visible = true;
+        BringToFront();
+        Invalidate();
+    }
+
+    public void End()
+    {
+        _pulsing = false;
+        _pulse.Stop();
+        Visible = false;
+    }
+
+    private void SetPercent(int value)
+    {
+        int clamped = Math.Clamp(value, 0, 100);
+        if (_percent == clamped) return;
+        _percent = clamped;
+        Invalidate();
+    }
+
+    private void OnPulse(object? sender, EventArgs e)
+    {
+        if (!_pulsing || _percent >= 90) return;
+
+        int next = _percent + Math.Max(1, (int)((90 - _percent) * 0.04));
+        SetPercent(Math.Min(next, 90));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _pulse.Dispose();
+        base.Dispose(disposing);
     }
 
     protected override void OnPaint(PaintEventArgs e)
