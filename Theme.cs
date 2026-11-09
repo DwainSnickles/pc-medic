@@ -25,6 +25,9 @@ internal static class Theme
     public static readonly Color TextDim = Color.FromArgb(130, 149, 168);
     public static readonly Color TextFaint = Color.FromArgb(82, 99, 116);
 
+    /// <summary>Resting outline for cards and controls: the accent held back, so it frames without shouting.</summary>
+    public static readonly Color Edge = Alpha(Accent, 110);
+
     public static readonly Font Ui;
     public static readonly Font UiBold;
     public static readonly Font UiSmall;

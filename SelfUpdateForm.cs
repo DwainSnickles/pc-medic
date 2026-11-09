@@ -36,26 +36,33 @@ internal sealed class SelfUpdateForm : Form
         Controls.Add(MakeLabel("PC MEDIC \u2022 SELF UPDATE", Theme.Kicker, Theme.Alpha(Theme.Accent, 215), new Point(30, 30)));
         Controls.Add(MakeLabel("SOFTWARE UPDATE", new Font(Theme.H2.FontFamily, 15f, FontStyle.Bold), Theme.Text, new Point(30, 48)));
 
-        Controls.Add(MakeLabel("CURRENT BUILD", Theme.Kicker, Theme.TextDim, new Point(30, 96)));
-        Controls.Add(MakeLabel("LATEST RELEASE", Theme.Kicker, Theme.TextDim, new Point(300, 96)));
+        Controls.Add(MakeLabel("CURRENT BUILD", Theme.Kicker, Theme.TextDim, new Point(30, 88)));
+        Controls.Add(MakeLabel("LATEST RELEASE", Theme.Kicker, Theme.TextDim, new Point(300, 88)));
+
+        Panel currentChip = Well(30, 104, 240, 30, 6f);
+        Panel latestChip = Well(300, 104, 230, 30, 6f);
+        Panel notesWell = Well(24, 146, ClientSize.Width - 48, 106, 8f);
 
         _currentValue.Text = UpdateService.CurrentVersion;
         _currentValue.Font = Theme.Mono;
         _currentValue.ForeColor = Theme.Text;
+        _currentValue.BackColor = Color.Transparent;
         _currentValue.AutoSize = false;
-        _currentValue.SetBounds(30, 112, 240, 22);
+        _currentValue.SetBounds(10, 5, 220, 20);
 
         _latestValue.Text = "\u2014";
         _latestValue.Font = Theme.Mono;
         _latestValue.ForeColor = Theme.Text;
+        _latestValue.BackColor = Color.Transparent;
         _latestValue.AutoSize = false;
-        _latestValue.SetBounds(300, 112, 230, 22);
+        _latestValue.SetBounds(12, 5, 200, 20);
 
         _notes.Text = string.Empty;
         _notes.Font = Theme.UiSmall;
         _notes.ForeColor = Theme.TextDim;
+        _notes.BackColor = Color.Transparent;
         _notes.AutoSize = false;
-        _notes.SetBounds(30, 152, 500, 96);
+        _notes.SetBounds(14, 10, notesWell.Width - 28, notesWell.Height - 20);
 
         _status.Text = "Ready.";
         _status.Font = Theme.MonoSmall;
@@ -63,9 +70,13 @@ internal sealed class SelfUpdateForm : Form
         _status.AutoSize = false;
         _status.SetBounds(30, 258, 500, 34);
 
-        Controls.Add(_currentValue);
-        Controls.Add(_latestValue);
-        Controls.Add(_notes);
+        currentChip.Controls.Add(_currentValue);
+        latestChip.Controls.Add(_latestValue);
+        notesWell.Controls.Add(_notes);
+
+        Controls.Add(currentChip);
+        Controls.Add(latestChip);
+        Controls.Add(notesWell);
         Controls.Add(_status);
 
         foreach (NeonButton button in new[] { _check, _install, _close })
@@ -75,7 +86,7 @@ internal sealed class SelfUpdateForm : Form
 
         // Covers the version readouts and notes while work runs; the status line and buttons stay visible.
         Controls.Add(_loading);
-        _loading.SetBounds(12, 88, ClientSize.Width - 24, 156);
+        _loading.SetBounds(12, 88, ClientSize.Width - 24, 164);
         _loading.BringToFront();
 
         _check.SetBounds(30, 316, _check.Width, _check.Height);
@@ -117,7 +128,47 @@ internal sealed class SelfUpdateForm : Form
 
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        Theme.PaintSurface(g, new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f), 12f, Theme.Surface, Theme.Border, Theme.Accent);
+
+        // The window edge gets the same heavy accent outline as the wells inside it, so the dialog reads
+        // as a form on the desktop instead of a floating block of text.
+        var frame = new RectangleF(1f, 1f, Width - 2f, Height - 2f);
+        Theme.PaintSurface(g, frame, 12f, Theme.Surface, Theme.Alpha(Theme.Accent, 215), Theme.Accent);
+
+        using GraphicsPath outline = RoundPath(frame, 12f);
+        using var edge = new Pen(Theme.Alpha(Theme.Accent, 215), 2f);
+        g.DrawPath(edge, outline);
+    }
+
+    /// <summary>
+    /// A filled, outlined well for one block of the dialog. Without the edge these blocks sit on the same
+    /// near-black as the form and their boundaries disappear.
+    /// </summary>
+    private static Panel Well(int x, int y, int width, int height, float radius)
+    {
+        var well = new Panel { BackColor = Theme.Bg };
+        well.SetBounds(x, y, width, height);
+        well.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using GraphicsPath path = RoundPath(new RectangleF(1f, 1f, well.Width - 2f, well.Height - 2f), radius);
+            using (var fill = new SolidBrush(Theme.Surface2)) e.Graphics.FillPath(fill, path);
+            using var edge = new Pen(Theme.Alpha(Theme.Accent, 215), 2f);
+            e.Graphics.DrawPath(edge, path);
+        };
+        return well;
+    }
+
+    /// <summary>Rounded rectangle, so the well's fill and its heavy border follow the same outline.</summary>
+    private static GraphicsPath RoundPath(RectangleF rect, float radius)
+    {
+        float diameter = radius * 2f;
+        var path = new GraphicsPath();
+        path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
+        path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
+        path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private static Label MakeLabel(string text, Font font, Color color, Point location) => new()

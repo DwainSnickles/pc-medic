@@ -146,7 +146,7 @@ internal sealed class RigSetupForm : Form
 
         Graphics g = e.Graphics;
         g.SmoothingMode = SmoothingMode.AntiAlias;
-        Theme.PaintSurface(g, new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f), 12f, Theme.Surface, Theme.Border, Theme.Accent);
+        Theme.PaintSurface(g, new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f), 12f, Theme.Surface, Theme.Alpha(Theme.Accent, 170), Theme.Accent);
     }
 
     private static Label MakeLabel(string text, Font font, Color color, Point location) => new()

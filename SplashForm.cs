@@ -57,7 +57,7 @@ internal sealed class SplashForm : Form
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
         var card = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
-        Theme.PaintSurface(g, card, 12f, Theme.Surface, Theme.Border, Theme.Accent);
+        Theme.PaintSurface(g, card, 12f, Theme.Surface, Theme.Alpha(Theme.Accent, 170), Theme.Accent);
 
         Brand.PaintMark(g, new RectangleF(30f, 46f, 60f, 60f));
 

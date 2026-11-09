@@ -121,7 +121,7 @@ internal sealed class NeonButton : SkinnedControl
         }
 
         using var body = new SolidBrush(_hover ? Theme.Surface2 : Color.FromArgb(19, 24, 33));
-        using var edge = new Pen(_hover ? Theme.Alpha(Tone, 175) : Theme.Border, 1f);
+        using var edge = new Pen(_hover ? Theme.Alpha(Tone, 175) : Theme.Edge, 1f);
         g.FillPath(body, path);
         g.DrawPath(edge, path);
         TextRenderer.DrawText(g, Text, Font, ClientRectangle, _hover ? Tone : Theme.Text, Centered);
@@ -337,8 +337,14 @@ internal class Card : Panel
             new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f),
             10f,
             Theme.Surface,
-            Theme.Border,
+            Theme.Edge,
             AccentTick ? Theme.Accent : null);
+
+        using (GraphicsPath edgePath = Theme.Round(new RectangleF(1f, 1f, Width - 2f, Height - 2f), 10f))
+        using (var edge = new Pen(Theme.Edge, 2f))
+        {
+            g.DrawPath(edge, edgePath);
+        }
 
         if (!string.IsNullOrEmpty(Kicker))
         {
@@ -449,7 +455,7 @@ internal sealed class StatTile : SkinnedControl
             new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f),
             10f,
             Theme.Surface,
-            Theme.Border,
+            Theme.Edge,
             Tone);
 
         TextRenderer.DrawText(g, Caption.ToUpperInvariant(), Theme.Kicker, new Point(18, 18), Theme.TextDim, TextFormatFlags.NoPrefix);
@@ -930,7 +936,7 @@ internal sealed class ToggleRow : SkinnedControl
             g.FillPath(trackFill, switchPath);
         }
 
-        using (var trackEdge = new Pen(Checked ? Theme.Alpha(Tone, interactive ? 210 : 80) : Theme.Border, 1f))
+        using (var trackEdge = new Pen(Checked ? Theme.Alpha(Tone, interactive ? 210 : 80) : Theme.Edge, 1f))
         {
             g.DrawPath(trackEdge, switchPath);
         }
@@ -1101,7 +1107,7 @@ internal sealed class StepperRow : SkinnedControl
             g.FillPath(fill, path);
         }
 
-        using (var pen = new Pen(hot ? Theme.Alpha(Tone, 200) : Theme.Border, 1f))
+        using (var pen = new Pen(hot ? Theme.Alpha(Tone, 200) : Theme.Edge, 1f))
         {
             g.DrawPath(pen, path);
         }
@@ -1319,7 +1325,7 @@ internal sealed class ToolTile : SkinnedControl
             new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f),
             9f,
             _hover ? Color.FromArgb(21, 29, 40) : Theme.Surface,
-            _hover ? Theme.Alpha(Tone, 120) : Theme.Border,
+            _hover ? Theme.Alpha(Tone, 120) : Theme.Edge,
             null);
 
         if (Mark is { } watermark && Height >= 140)

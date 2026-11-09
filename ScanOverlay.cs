@@ -139,7 +139,7 @@ internal sealed class ScanOverlay : SkinnedControl
         using (GraphicsPath track = Theme.Round(bar, BarHeight / 2f))
         {
             using var fill = new SolidBrush(Theme.BorderSoft);
-            using var edge = new Pen(Theme.Border);
+            using var edge = new Pen(Theme.Edge);
             g.FillPath(fill, track);
             g.DrawPath(edge, track);
         }
