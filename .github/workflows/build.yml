@@ -33,12 +33,12 @@ jobs:
       - name: Restore
         run: >
           dotnet restore "PC Medic.csproj"
-          -p:DiskDefragProject=companion\DiskDefrag.csproj
+          -p:DiskDefragProject=companion/DiskDefrag.csproj
 
       - name: Build
         run: >
           dotnet build "PC Medic.csproj" -c Release --no-restore
-          -p:DiskDefragProject=companion\DiskDefrag.csproj
+          -p:DiskDefragProject=companion/DiskDefrag.csproj
 
       # Self-contained single file so the artifact runs on a machine with no .NET installed.
       - name: Publish PC Medic
@@ -46,7 +46,7 @@ jobs:
           dotnet publish "PC Medic.csproj" -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=None -p:DebugSymbols=false
-          -p:DiskDefragProject=companion\DiskDefrag.csproj
+          -p:DiskDefragProject=companion/DiskDefrag.csproj
           -o staging/pcmedic
 
       - name: Publish Disk Defrag

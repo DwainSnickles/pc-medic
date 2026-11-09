@@ -36,6 +36,9 @@
     <Compile Remove="DiskDefrag\**" />
     <EmbeddedResource Remove="DiskDefrag\**" />
     <None Remove="DiskDefrag\**" />
+    <Compile Remove="companion\**" />
+    <EmbeddedResource Remove="companion\**" />
+    <None Remove="companion\**" />
   </ItemGroup>
 
   <!-- Ship the Disk Defrag build that sits beside this project, so the companion is never a stale copy. -->
