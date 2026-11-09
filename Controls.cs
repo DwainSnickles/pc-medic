@@ -53,6 +53,42 @@ internal sealed class NeonButton : SkinnedControl
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Color Tone { get; set; } = Theme.Accent;
 
+    /// <summary>Segoe glyph drawn before the caption, for an action whose icon says it faster.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public string Glyph { get; set; } = string.Empty;
+
+    /// <summary>Caption, or glyph plus caption, drawn centred as one unit.</summary>
+    private void DrawLabel(Graphics g, Color color)
+    {
+        if (Glyph.Length == 0)
+        {
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, color, Centered);
+            return;
+        }
+
+        Size glyph = TextRenderer.MeasureText(Glyph, Theme.Icon);
+        Size caption = TextRenderer.MeasureText(Text, Font);
+        const int gap = 8;
+        int total = glyph.Width + gap + caption.Width;
+        int left = Math.Max(2, (Width - total) / 2);
+
+        TextRenderer.DrawText(
+            g,
+            Glyph,
+            Theme.Icon,
+            new Rectangle(left, 0, glyph.Width, Height),
+            color,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+
+        TextRenderer.DrawText(
+            g,
+            Text,
+            Font,
+            new Rectangle(left + glyph.Width + gap, 0, caption.Width + 4, Height),
+            color,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+    }
+
     protected override void OnMouseEnter(EventArgs e)
     {
         _hover = true;
@@ -103,7 +139,7 @@ internal sealed class NeonButton : SkinnedControl
             using var border = new Pen(Theme.BorderSoft);
             g.FillPath(fill, path);
             g.DrawPath(border, path);
-            TextRenderer.DrawText(g, Text, Font, ClientRectangle, Theme.TextFaint, Centered);
+            DrawLabel(g, Theme.TextFaint);
             return;
         }
 
@@ -116,7 +152,7 @@ internal sealed class NeonButton : SkinnedControl
                 g.FillPath(fill, path);
             }
 
-            TextRenderer.DrawText(g, Text, Font, ClientRectangle, Color.FromArgb(4, 18, 24), Centered);
+            DrawLabel(g, Color.FromArgb(4, 18, 24));
             return;
         }
 
@@ -124,7 +160,7 @@ internal sealed class NeonButton : SkinnedControl
         using var edge = new Pen(_hover ? Theme.Alpha(Tone, 175) : Theme.Edge, 1f);
         g.FillPath(body, path);
         g.DrawPath(edge, path);
-        TextRenderer.DrawText(g, Text, Font, ClientRectangle, _hover ? Tone : Theme.Text, Centered);
+        DrawLabel(g, _hover ? Tone : Theme.Text);
     }
 }
 
@@ -607,6 +643,7 @@ internal sealed class ToggleRow : SkinnedControl
     private bool _actionHover;
     private bool _actionPressed;
     private string _actionGlyph = string.Empty;
+    private bool _showSwitch = true;
     private bool _working;
     private int _progress;
     private float _phase;
@@ -741,13 +778,15 @@ internal sealed class ToggleRow : SkinnedControl
         {
             if (!HasAction) return Rectangle.Empty;
 
+            int right = Width - (_showSwitch ? 58 : 12) - 10;
+
             if (_actionText.Length == 0)
             {
-                return new Rectangle(Width - 58 - 10 - 30, (Height - 26) / 2, 30, 26);
+                return new Rectangle(right - 30, (Height - 26) / 2, 30, 26);
             }
 
             int width = TextRenderer.MeasureText(_actionText, Theme.Kicker).Width + 20;
-            return new Rectangle(Width - 58 - 10 - width, (Height - 18) / 2, width, 18);
+            return new Rectangle(right - width, (Height - 18) / 2, width, 18);
         }
     }
 
@@ -771,11 +810,24 @@ internal sealed class ToggleRow : SkinnedControl
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public bool Locked { get; set; }
 
+    /// <summary>Hides the painted switch for a page that drives its rows from the toolbar instead.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool ShowSwitch
+    {
+        get => _showSwitch;
+        set
+        {
+            if (_showSwitch == value) return;
+            _showSwitch = value;
+            Invalidate();
+        }
+    }
+
     private Rectangle SwitchBounds => new(Width - 58, (Height - 20) / 2, 40, 20);
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        bool overSwitch = SwitchBounds.Contains(e.Location);
+        bool overSwitch = _showSwitch && SwitchBounds.Contains(e.Location);
         bool overAction = HasAction && ActionBounds.Contains(e.Location);
         bool actionChanged = overAction != _actionHover;
         bool changed = false;
@@ -821,7 +873,7 @@ internal sealed class ToggleRow : SkinnedControl
             return;
         }
 
-        if (Enabled && !Locked && SwitchBounds.Contains(e.Location))
+        if (Enabled && !Locked && _showSwitch && SwitchBounds.Contains(e.Location))
         {
             Checked = !Checked;
             Toggled?.Invoke(this, Checked);
@@ -859,13 +911,15 @@ internal sealed class ToggleRow : SkinnedControl
             _hover && interactive ? Theme.Alpha(Tone, 60) : Theme.BorderSoft,
             null);
 
-        using (var dot = new SolidBrush(Checked && interactive ? Tone : Theme.TextFaint))
+        // The dot mirrors the switch; with the switch gone it would read as a stale tick mark.
+        if (_showSwitch)
         {
+            using var dot = new SolidBrush(Checked && interactive ? Tone : Theme.TextFaint);
             g.FillRectangle(dot, 16, (Height / 2f) - 4f, 8, 8);
         }
 
         int reserved = HasAction ? ActionBounds.Width + 12 : 0;
-        int textWidth = Math.Max(40, Width - 90 - reserved);
+        int textWidth = Math.Max(40, Width - (_showSwitch ? 90 : 30) - reserved);
         bool badge = !string.IsNullOrEmpty(BadgeText);
 
         // The badge sits after the title, so the title box gives up that room: a long name ellipsises
@@ -897,7 +951,7 @@ internal sealed class ToggleRow : SkinnedControl
                 g,
                 Subtitle,
                 Theme.MonoSmall,
-                new Rectangle(34, 31, Math.Max(40, Width - 100 - reserved), 20),
+                new Rectangle(34, 31, Math.Max(40, Width - (_showSwitch ? 100 : 40) - reserved), 20),
                 interactive ? Theme.TextDim : Theme.TextFaint,
                 Labeled);
         }
@@ -929,21 +983,24 @@ internal sealed class ToggleRow : SkinnedControl
             }
         }
 
-        Rectangle track = SwitchBounds;
-        using GraphicsPath switchPath = Theme.Round(track, track.Height / 2f);
-        using (var trackFill = new SolidBrush(Checked ? Theme.Alpha(Tone, interactive ? 55 : 26) : Color.FromArgb(10, 15, 21)))
+        if (_showSwitch)
         {
-            g.FillPath(trackFill, switchPath);
-        }
+            Rectangle track = SwitchBounds;
+            using GraphicsPath switchPath = Theme.Round(track, track.Height / 2f);
+            using (var trackFill = new SolidBrush(Checked ? Theme.Alpha(Tone, interactive ? 55 : 26) : Color.FromArgb(10, 15, 21)))
+            {
+                g.FillPath(trackFill, switchPath);
+            }
 
-        using (var trackEdge = new Pen(Checked ? Theme.Alpha(Tone, interactive ? 210 : 80) : Theme.Edge, 1f))
-        {
-            g.DrawPath(trackEdge, switchPath);
-        }
+            using (var trackEdge = new Pen(Checked ? Theme.Alpha(Tone, interactive ? 210 : 80) : Theme.Edge, 1f))
+            {
+                g.DrawPath(trackEdge, switchPath);
+            }
 
-        int knobX = Checked ? track.Right - 17 : track.X + 3;
-        using var knob = new SolidBrush(Checked ? (interactive ? Tone : Theme.Alpha(Tone, 110)) : Theme.TextFaint);
-        g.FillEllipse(knob, knobX, track.Y + 3, 14, 14);
+            int knobX = Checked ? track.Right - 17 : track.X + 3;
+            using var knob = new SolidBrush(Checked ? (interactive ? Tone : Theme.Alpha(Tone, 110)) : Theme.TextFaint);
+            g.FillEllipse(knob, knobX, track.Y + 3, 14, 14);
+        }
 
         if (!_working) return;
 

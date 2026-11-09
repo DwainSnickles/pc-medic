@@ -208,9 +208,17 @@ internal static class UpdatesService
         }
     }
 
-    public static (bool Ok, string Message) Install(IReadOnlyList<DriverUpdate> drivers)
+    /// <summary>
+    /// Downloads and installs the given drivers one at a time rather than as one batch: a batch hands
+    /// the whole transfer to Windows Update and cannot be stopped, while stepping through the list lets
+    /// the page cancel between drivers and mark each row as it goes.
+    /// </summary>
+    public static (bool Ok, string Message) Install(
+        IReadOnlyList<DriverUpdate> drivers,
+        CancellationToken token = default,
+        IProgress<(int Index, int Total)>? progress = null)
     {
-        if (drivers.Count == 0) return (false, "Nothing is selected.");
+        if (drivers.Count == 0) return (false, "Nothing to install.");
         if (!Native.IsElevated) return (false, "Driver installs need an elevated run \u2014 use RESTART AS ADMIN.");
 
         try
@@ -220,11 +228,19 @@ internal static class UpdatesService
             if (sessionType is null || collectionType is null) return (false, "The Windows Update agent is unavailable.");
 
             dynamic session = Activator.CreateInstance(sessionType)!;
-            dynamic collection = Activator.CreateInstance(collectionType)!;
 
-            foreach (DriverUpdate driver in drivers)
+            int installed = 0;
+            bool reboot = false;
+            string? failure = null;
+
+            for (int index = 0; index < drivers.Count; index++)
             {
+                token.ThrowIfCancellationRequested();
+                progress?.Report((index, drivers.Count));
+
+                DriverUpdate driver = drivers[index];
                 dynamic update = driver.Payload;
+                dynamic collection = Activator.CreateInstance(collectionType)!;
 
                 try
                 {
@@ -236,39 +252,53 @@ internal static class UpdatesService
                 }
 
                 collection.Add(update);
+
+                dynamic downloader = session.CreateUpdateDownloader();
+                downloader.Updates = collection;
+                dynamic download = downloader.Download();
+
+                int downloadCode = (int)download.ResultCode;
+                if (downloadCode != OperationSucceeded)
+                {
+                    failure ??= $"{driver.Title}: download failed with code {downloadCode}.";
+                    continue;
+                }
+
+                token.ThrowIfCancellationRequested();
+
+                dynamic installer = session.CreateUpdateInstaller();
+                installer.Updates = collection;
+                dynamic install = installer.Install();
+
+                int installCode = (int)install.ResultCode;
+                if (installCode != OperationSucceeded)
+                {
+                    failure ??= $"{driver.Title}: install finished with code {installCode}.";
+                    continue;
+                }
+
+                installed++;
+
+                try
+                {
+                    reboot |= (bool)install.RebootRequired;
+                }
+                catch
+                {
+                    // Cosmetic.
+                }
             }
 
-            dynamic downloader = session.CreateUpdateDownloader();
-            downloader.Updates = collection;
-            dynamic download = downloader.Download();
+            if (installed == 0 && failure is not null) return (false, failure);
 
-            int downloadCode = (int)download.ResultCode;
-            if (downloadCode != OperationSucceeded)
-            {
-                return (false, $"Download failed with code {downloadCode}.");
-            }
+            string message = $"{installed} driver update(s) installed" + (reboot ? " \u2014 reboot required." : ".");
+            if (failure is not null) message += " " + failure;
 
-            dynamic installer = session.CreateUpdateInstaller();
-            installer.Updates = collection;
-            dynamic install = installer.Install();
-
-            int installCode = (int)install.ResultCode;
-            if (installCode != OperationSucceeded)
-            {
-                return (false, $"Install finished with code {installCode}.");
-            }
-
-            bool reboot = false;
-            try
-            {
-                reboot = (bool)install.RebootRequired;
-            }
-            catch
-            {
-                // Cosmetic.
-            }
-
-            return (true, $"{drivers.Count} driver update(s) installed" + (reboot ? " \u2014 reboot required." : "."));
+            return (failure is null, message);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

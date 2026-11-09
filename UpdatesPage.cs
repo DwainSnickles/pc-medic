@@ -17,9 +17,11 @@ internal sealed class UpdatesPage : PageBase
     private readonly Label _note = new();
     private readonly ToolTip _tips = new();
     private readonly NeonButton _scanApps = Button("SCAN", width: 76, height: 28);
-    private readonly NeonButton _upgrade = Button("UPGRADE (0)", primary: true, width: 132, height: 28);
+    private readonly NeonButton _downloadApps = DownloadAllButton();
+    private readonly NeonButton _cancelApps = CancelButton();
     private readonly NeonButton _scanDrivers = Button("SCAN", width: 76, height: 28);
-    private readonly NeonButton _install = Button("INSTALL (0)", primary: true, width: 112, height: 28);
+    private readonly NeonButton _downloadDrivers = DownloadAllButton();
+    private readonly NeonButton _cancelDrivers = CancelButton();
     private readonly List<(ToggleRow Row, AppUpgrade App)> _appRows = new();
     private readonly List<(ToggleRow Row, DriverUpdate Driver)> _driverRows = new();
     private readonly string? _winget = UpdatesService.WingetPath;
@@ -27,8 +29,26 @@ internal sealed class UpdatesPage : PageBase
     private List<DriverUpdate> _driverItems = new();
     private bool _busyApps;
     private bool _busyDrivers;
+    private CancellationTokenSource? _appCancel;
+    private CancellationTokenSource? _driverCancel;
     private bool _firstVisit = true;
     private ToggleRow? _confirmRow;
+
+    /// <summary>The single action each column carries: every listed update, downloaded in one pass.</summary>
+    private static NeonButton DownloadAllButton()
+    {
+        var button = Button("DOWNLOAD ALL", primary: true, width: 158, height: 28);
+        button.Glyph = "\uE896";
+        return button;
+    }
+
+    private static NeonButton CancelButton()
+    {
+        var button = Button("CANCEL", width: 88, height: 28);
+        button.Tone = Theme.Bad;
+        button.Visible = false;
+        return button;
+    }
 
     public UpdatesPage()
         : base("UPDATES", "Application upgrades through winget, driver updates through Windows Update.")
@@ -46,10 +66,10 @@ internal sealed class UpdatesPage : PageBase
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
 
-        Card appsCard = BuildColumn("APPLICATIONS", "WINGET", _apps, _appStatus, _scanApps, _upgrade, _appsLoading);
+        Card appsCard = BuildColumn("APPLICATIONS", "WINGET", _apps, _appStatus, _scanApps, _downloadApps, _cancelApps, _appsLoading);
         appsCard.Margin = new Padding(0, 0, 6, 8);
 
-        Card driverCard = BuildColumn("DRIVERS", "WINDOWS UPDATE", _drivers, _driverStatus, _scanDrivers, _install, _driversLoading);
+        Card driverCard = BuildColumn("DRIVERS", "WINDOWS UPDATE", _drivers, _driverStatus, _scanDrivers, _downloadDrivers, _cancelDrivers, _driversLoading);
         driverCard.Margin = new Padding(6, 0, 0, 8);
 
         root.Controls.Add(appsCard, 0, 0);
@@ -78,7 +98,7 @@ internal sealed class UpdatesPage : PageBase
         _scanApps.Click += (_, _) => ReloadApps(announce: true);
         _scanDrivers.Click += (_, _) => ReloadDrivers(announce: true);
 
-        _upgrade.Click += (_, _) =>
+        _downloadApps.Click += (_, _) =>
         {
             if (_winget is null)
             {
@@ -86,10 +106,13 @@ internal sealed class UpdatesPage : PageBase
                 return;
             }
 
-            UpgradeSelected();
+            DownloadAllApps();
         };
 
-        _install.Click += (_, _) => InstallSelected();
+        _downloadDrivers.Click += (_, _) => DownloadAllDrivers();
+
+        _cancelApps.Click += (_, _) => CancelApps();
+        _cancelDrivers.Click += (_, _) => CancelDrivers();
 
         _apps.Resize += (_, _) => ResizeRows(_apps);
         _drivers.Resize += (_, _) => ResizeRows(_drivers);
@@ -113,6 +136,17 @@ internal sealed class UpdatesPage : PageBase
         ReloadDrivers(announce: false);
     }
 
+    /// <summary>
+    /// Work started here keeps running when the panel is left, but the wait cursor must not follow the
+    /// pointer around the rest of the console: anything still outstanding is dropped on the way out.
+    /// </summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+
+        if (!Visible) Busy.ReleaseWaitCursor();
+    }
+
     private Card BuildColumn(
         string header,
         string kicker,
@@ -120,6 +154,7 @@ internal sealed class UpdatesPage : PageBase
         Label status,
         NeonButton scan,
         NeonButton action,
+        NeonButton cancel,
         ScanOverlay loading)
     {
         Card card = Panel(header, kicker);
@@ -149,6 +184,7 @@ internal sealed class UpdatesPage : PageBase
 
         toolbar.Controls.Add(status);
         toolbar.Controls.Add(action);
+        toolbar.Controls.Add(cancel);
         toolbar.Controls.Add(scan);
 
         void LayoutToolbar()
@@ -156,12 +192,21 @@ internal sealed class UpdatesPage : PageBase
             int right = toolbar.ClientSize.Width;
             right -= action.Width;
             action.SetBounds(right, 3, action.Width, 28);
+
+            // Cancel only takes room while a pass is running, so the rest of the toolbar stays put.
+            if (cancel.Visible)
+            {
+                right -= cancel.Width + 6;
+                cancel.SetBounds(right, 3, cancel.Width, 28);
+            }
+
             right -= scan.Width + 8;
             scan.SetBounds(right, 3, scan.Width, 28);
             status.SetBounds(0, 8, Math.Max(80, right - 12), 18);
         }
 
         toolbar.Resize += (_, _) => LayoutToolbar();
+        cancel.VisibleChanged += (_, _) => LayoutToolbar();
         LayoutToolbar();
 
         list.Dock = DockStyle.Fill;
@@ -418,11 +463,10 @@ internal sealed class UpdatesPage : PageBase
                 Tone = Theme.Accent,
                 ActionGlyph = "\uE74D",
                 ActionTone = Theme.Bad,
-                Checked = true,
+                ShowSwitch = false,
                 Tag = app,
             };
 
-            row.Toggled += (_, _) => SyncButtons();
             row.ActionClicked += clicked => RequestUninstall(clicked, app);
             string details = $"{app.Name}\r\n{app.VersionLine}  \u2022  {app.Id}";
             row.ActionHoverChanged += (_, over) => _tips.SetToolTip(row, over ? $"UNINSTALL {app.Name}" : details);
@@ -461,11 +505,10 @@ internal sealed class UpdatesPage : PageBase
                 BadgeText = "DRV",
                 BadgeTone = Theme.Violet,
                 Tone = Theme.Violet,
-                Checked = false,
+                ShowSwitch = false,
                 Tag = driver,
             };
 
-            row.Toggled += (_, _) => SyncButtons();
             _tips.SetToolTip(row, $"{driver.Title}\r\n{driver.DetailLine}");
             row.SetBounds(4, y, RowWidth(_drivers), 62);
             _drivers.Controls.Add(row);
@@ -495,69 +538,124 @@ internal sealed class UpdatesPage : PageBase
     }
 
     /// <summary>
-    /// Upgrades every ticked app in turn, each with its own bar on its own row: winget streams the
-    /// transfer, so the row fills with the real percentage and sweeps only when nothing is reported.
+    /// Downloads and installs every listed app in one pass. The work stays on the message loop instead
+    /// of behind a wait cursor, so the panel can be left while it continues; each row keeps its own bar
+    /// and CANCEL stops the pass, killing winget's transfer if one is in flight.
     /// </summary>
-    private async void UpgradeSelected()
+    private async void DownloadAllApps()
     {
-        List<(ToggleRow Row, AppUpgrade App)> selected = _appRows
-            .Where(pair => pair.Row.Checked)
-            .ToList();
+        if (_busyApps) return;
 
-        if (selected.Count == 0) return;
+        List<AppUpgrade> queue = _appItems.ToList();
+        if (queue.Count == 0) return;
+
+        if (_winget is null)
+        {
+            Tools.OpenUrl(UpdatesService.WingetDownloadPage);
+            return;
+        }
+
+        using var cancel = new CancellationTokenSource();
+        _appCancel = cancel;
 
         _busyApps = true;
         _scanApps.Enabled = false;
         SetRowsEnabled(_appRows.Select(pair => pair.Row), false);
-        using IDisposable busy = Working();
         SyncButtons();
         _rowSweep.Start();
 
         int applied = 0;
-        int index = 0;
+        bool stopped = false;
 
         try
         {
-            foreach ((ToggleRow row, AppUpgrade app) in selected)
+            for (int index = 0; index < queue.Count; index++)
             {
-                index++;
-                BeginRowProgress(row);
+                if (cancel.IsCancellationRequested) { stopped = true; break; }
+
+                AppUpgrade app = queue[index];
+                ToggleRow? row = RowFor(app);
+
+                if (row is not null) BeginRowProgress(row);
                 SetAppStatus(
-                    $"({index}/{selected.Count}) UPGRADING {Theme.Truncate(app.Name.ToUpperInvariant(), 22)}",
+                    $"({index + 1}/{queue.Count}) DOWNLOADING {Theme.Truncate(app.Name.ToUpperInvariant(), 18)}",
                     Theme.Text,
                     app.Name);
 
                 var progress = new Progress<int>(percent =>
                 {
-                    if (!IsDisposed) ReportRowProgress(row, percent);
+                    if (!IsDisposed && row is { IsDisposed: false }) ReportRowProgress(row, percent);
                 });
 
-                (bool ok, string message) = await UpdatesService.UpgradeAsync(app, progress);
+                (bool ok, string message) = await UpdatesService.UpgradeAsync(app, progress, cancel.Token);
 
                 if (IsDisposed) return;
 
-                EndRowProgress(row, ok);
+                if (cancel.IsCancellationRequested) stopped = true;
 
-                if (ok)
+                if (row is not null) EndRowProgress(row, ok, stopped);
+
+                if (ok && !stopped)
                 {
                     applied++;
                     ActivityLog.Success(message);
                 }
-                else
+                else if (!stopped)
                 {
                     ActivityLog.Error(message);
                 }
             }
+
+            if (stopped)
+            {
+                SetAppStatus("CANCELLED", Theme.Warn);
+                ActivityLog.Warn($"Download all stopped: {applied} of {queue.Count} applied.");
+            }
+            else
+            {
+                SetAppStatus(
+                    $"{applied} OF {queue.Count} UPGRADED",
+                    applied == queue.Count ? Theme.Good : Theme.Warn);
+            }
+        }
+        catch (Exception ex)
+        {
+            SetAppStatus(Theme.Truncate(ex.Message.ToUpperInvariant(), 46), Theme.Bad, ex.Message);
+            ActivityLog.Error($"Download all: {ex.Message}");
         }
         finally
         {
             _rowSweep.Stop();
             _busyApps = false;
-            _scanApps.Enabled = true;
-            SetRowsEnabled(_appRows.Select(pair => pair.Row), true);
-            ActivityLog.Info($"Upgrade pass finished: {applied} of {selected.Count} applied.");
-            ReloadApps(announce: false);
+            _appCancel = null;
+
+            if (!IsDisposed)
+            {
+                _scanApps.Enabled = true;
+                SetRowsEnabled(_appRows.Select(pair => pair.Row), true);
+                SyncButtons();
+                ReloadApps(announce: false);
+            }
         }
+    }
+
+    private void CancelApps()
+    {
+        if (_appCancel is null) return;
+
+        SetAppStatus("CANCELLING\u2026", Theme.Warn);
+        _appCancel.Cancel();
+    }
+
+    /// <summary>The row that currently shows this app, or null once the list has been rebuilt.</summary>
+    private ToggleRow? RowFor(AppUpgrade app)
+    {
+        foreach ((ToggleRow row, AppUpgrade candidate) in _appRows)
+        {
+            if (ReferenceEquals(candidate, app)) return row;
+        }
+
+        return null;
     }
 
     /// <summary>The row takes over as the progress surface while its package downloads and installs.</summary>
@@ -580,26 +678,25 @@ internal sealed class UpdatesPage : PageBase
         row.BadgeText = $"{percent}%";
     }
 
-    private static void EndRowProgress(ToggleRow row, bool ok)
+    private static void EndRowProgress(ToggleRow row, bool ok, bool stopped)
     {
         row.Working = false;
         row.Progress = 0;
         row.ActionText = string.Empty;
-        row.ActionGlyph = "\uE74D";
+        row.ActionGlyph = stopped ? string.Empty : "\uE74D";
         row.ActionTone = Theme.Bad;
-        row.BadgeText = ok ? "DONE" : "FAILED";
-        row.BadgeTone = ok ? Theme.Good : Theme.Bad;
+        row.BadgeText = stopped ? "STOPPED" : ok ? "DONE" : "FAILED";
+        row.BadgeTone = stopped ? Theme.Warn : ok ? Theme.Good : Theme.Bad;
         row.Invalidate();
     }
 
-    private async void InstallSelected()
+    /// <summary>Every driver update, downloaded and installed one at a time so CANCEL can stop between them.</summary>
+    private async void DownloadAllDrivers()
     {
-        List<DriverUpdate> selected = _driverRows
-            .Where(pair => pair.Row.Checked)
-            .Select(pair => pair.Driver)
-            .ToList();
+        if (_busyDrivers) return;
 
-        if (selected.Count == 0) return;
+        List<DriverUpdate> queue = _driverItems.ToList();
+        if (queue.Count == 0) return;
 
         if (!Native.IsElevated)
         {
@@ -608,21 +705,41 @@ internal sealed class UpdatesPage : PageBase
             return;
         }
 
+        using var cancel = new CancellationTokenSource();
+        _driverCancel = cancel;
+
         _busyDrivers = true;
         _scanDrivers.Enabled = false;
         SetRowsEnabled(_driverRows.Select(pair => pair.Row), false);
         SyncButtons();
-        SetDriverStatus("DOWNLOADING + INSTALLING\u2026", Theme.Text);
-        using IDisposable busy = Working();
+        SetDriverStatus($"DOWNLOADING 1/{queue.Count}\u2026", Theme.Text);
 
         try
         {
-            (bool ok, string message) = await Task.Run(() => UpdatesService.Install(selected));
+            var progress = new Progress<(int Index, int Total)>(step =>
+            {
+                if (IsDisposed || step.Total <= 0) return;
+
+                SetDriverStatus($"DOWNLOADING {step.Index + 1}/{step.Total}\u2026", Theme.Text);
+
+                if (step.Index < _driverRows.Count) BeginRowProgress(_driverRows[step.Index].Row);
+            });
+
+            (bool ok, string message) = await Task.Run(
+                () => UpdatesService.Install(queue, cancel.Token, progress),
+                cancel.Token);
+
+            if (IsDisposed) return;
 
             if (ok) ActivityLog.Success(message);
             else ActivityLog.Error(message);
 
             SetDriverStatus(Theme.Truncate(message.ToUpperInvariant(), 46), ok ? Theme.Good : Theme.Bad, message);
+        }
+        catch (OperationCanceledException)
+        {
+            SetDriverStatus("CANCELLED", Theme.Warn);
+            ActivityLog.Warn("Driver download all cancelled.");
         }
         catch (Exception ex)
         {
@@ -632,11 +749,24 @@ internal sealed class UpdatesPage : PageBase
         finally
         {
             _busyDrivers = false;
-            _scanDrivers.Enabled = true;
-            SetRowsEnabled(_driverRows.Select(pair => pair.Row), true);
-            SyncButtons();
-            ReloadDrivers(announce: false);
+            _driverCancel = null;
+
+            if (!IsDisposed)
+            {
+                _scanDrivers.Enabled = true;
+                SetRowsEnabled(_driverRows.Select(pair => pair.Row), true);
+                SyncButtons();
+                ReloadDrivers(announce: false);
+            }
         }
+    }
+
+    private void CancelDrivers()
+    {
+        if (_driverCancel is null) return;
+
+        SetDriverStatus("CANCELLING\u2026", Theme.Warn);
+        _driverCancel.Cancel();
     }
 
     private static void SetRowsEnabled(IEnumerable<ToggleRow> rows, bool enabled)
@@ -666,15 +796,15 @@ internal sealed class UpdatesPage : PageBase
     private void SyncButtons()
     {
         bool missingWinget = _winget is null;
-        int apps = _appRows.Count(pair => pair.Row.Checked);
-        int drivers = _driverRows.Count(pair => pair.Row.Checked);
 
-        _upgrade.Text = missingWinget ? "GET WINGET" : $"UPGRADE ({apps})";
-        _upgrade.Enabled = !_busyApps && (missingWinget || apps > 0);
-        _upgrade.Invalidate();
+        _downloadApps.Text = missingWinget ? "GET WINGET" : "DOWNLOAD ALL";
+        _downloadApps.Glyph = missingWinget ? string.Empty : "\uE896";
+        _downloadApps.Enabled = !_busyApps && (missingWinget || _appItems.Count > 0);
+        _downloadApps.Invalidate();
+        _cancelApps.Visible = _busyApps;
 
-        _install.Text = $"INSTALL ({drivers})";
-        _install.Enabled = !_busyDrivers && drivers > 0;
-        _install.Invalidate();
+        _downloadDrivers.Enabled = !_busyDrivers && _driverItems.Count > 0;
+        _downloadDrivers.Invalidate();
+        _cancelDrivers.Visible = _busyDrivers;
     }
 }
