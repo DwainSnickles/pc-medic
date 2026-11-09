@@ -16,10 +16,20 @@
     <PackageReference Include="Autoupdater.NET.Official" Version="1.9.3" />
   </ItemGroup>
 
-  <!-- Build the companion from source and host its form inside the console. -->
-  <ItemGroup>
-    <ProjectReference Include="..\DiskDefrag\DiskDefrag.csproj" />
+  <!-- Build the companion from source and host its form inside the console. The project lives in
+       its own repo, so CI passes the checkout it fetched instead of the sibling folder. -->
+  <PropertyGroup>
+    <DiskDefragProject Condition="'$(DiskDefragProject)' == ''">..\DiskDefrag\DiskDefrag.csproj</DiskDefragProject>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(DiskDefragProject)')">
+    <ProjectReference Include="$(DiskDefragProject)" />
   </ItemGroup>
+
+  <Target Name="RequireDiskDefrag" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('$(DiskDefragProject)')"
+           Text="Disk Defrag project not found at '$(DiskDefragProject)'. Clone it beside this repo or pass -p:DiskDefragProject=&lt;path&gt;." />
+  </Target>
 
   <!-- Disk Defrag is a separate project living in its own folder. -->
   <ItemGroup>

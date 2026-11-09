@@ -23,11 +23,22 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # PC Medic compiles Disk Defrag from source, and that project lives in its own repo.
+      - name: Checkout Disk Defrag companion
+        uses: actions/checkout@v4
+        with:
+          repository: DwainSnickles/disk-defrag
+          path: companion
+
       - name: Restore
-        run: dotnet restore "PC Medic.csproj"
+        run: >
+          dotnet restore "PC Medic.csproj"
+          -p:DiskDefragProject=companion\DiskDefrag.csproj
 
       - name: Build
-        run: dotnet build "PC Medic.csproj" -c Release --no-restore
+        run: >
+          dotnet build "PC Medic.csproj" -c Release --no-restore
+          -p:DiskDefragProject=companion\DiskDefrag.csproj
 
       # Self-contained single file so the artifact runs on a machine with no .NET installed.
       - name: Publish PC Medic
@@ -35,13 +46,8 @@ jobs:
           dotnet publish "PC Medic.csproj" -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=None -p:DebugSymbols=false
+          -p:DiskDefragProject=companion\DiskDefrag.csproj
           -o staging/pcmedic
-
-      - name: Checkout Disk Defrag companion
-        uses: actions/checkout@v4
-        with:
-          repository: DwainSnickles/disk-defrag
-          path: companion
 
       - name: Publish Disk Defrag
         run: >
