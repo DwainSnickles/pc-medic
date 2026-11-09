@@ -7,6 +7,7 @@ internal sealed class BenchPage : PageBase
     private readonly Label _status = new();
     private readonly ToolTip _tips = new();
     private readonly NeonButton _getMissing = Button("GET ALL MISSING", width: 210, height: 28);
+    private readonly NeonButton _findMissing = Button("SEARCH THIS PC", width: 168, height: 28);
 
     public BenchPage()
         : base("BENCHMARKS", "Portable test rigs, detected beside the executable.")
@@ -56,6 +57,12 @@ internal sealed class BenchPage : PageBase
                     Tools.LaunchPortable(target);
                     RefreshStatuses();
                 }
+            };
+
+            tile.ShowFinder = true;
+            tile.FinderClicked += (sender, _) =>
+            {
+                if (sender is ToolTile source && source.Tag is PortableApp target) BrowseForRig(target);
             };
 
             tile.ContextMenuStrip = BuildRigMenu(app);
@@ -117,11 +124,14 @@ internal sealed class BenchPage : PageBase
         var footer = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, Margin = new Padding(0) };
         _status.Location = new Point(2, 7);
         footer.Controls.Add(_status);
+        footer.Controls.Add(_findMissing);
         footer.Controls.Add(_getMissing);
 
         void LayoutFooter()
         {
             _getMissing.SetBounds(footer.ClientSize.Width - _getMissing.Width, 1, _getMissing.Width, 28);
+            _findMissing.SetBounds(
+                Math.Max(0, _getMissing.Left - _findMissing.Width - 8), 1, _findMissing.Width, 28);
         }
 
         footer.Resize += (_, _) => LayoutFooter();
@@ -130,6 +140,11 @@ internal sealed class BenchPage : PageBase
 
         _getMissing.Click += (_, _) => OpenMissingDownloads();
         _tips.SetToolTip(_getMissing, "Installs every missing rig through winget, one progress bar per download.");
+
+        _findMissing.Click += (_, _) => OpenMissingSearch();
+        _tips.SetToolTip(
+            _findMissing,
+            "Walks every drive, plus the registry and winget, for the missing rigs \u2014 a copy already on D: needs no download.");
 
         Controls.Add(root);
         RefreshStatuses();
@@ -150,6 +165,7 @@ internal sealed class BenchPage : PageBase
             bool found = resolved is not null;
             bool isCustom = found && stored is not null &&
                             string.Equals(resolved, stored, StringComparison.OrdinalIgnoreCase);
+            bool stale = !found && stored is not null;
             if (found) ready++;
             if (isCustom) customCount++;
 
@@ -159,7 +175,9 @@ internal sealed class BenchPage : PageBase
             tile.ActionTone = found ? Theme.Accent : Theme.Violet;
             tile.Subtitle = found
                 ? (isCustom ? $"Custom \u2022 {ShortPath(resolved!)}" : app.Note)
-                : $"Not in {app.Folder}";
+                : stale
+                    ? "Remembered path is gone \u2022 browse again"
+                    : $"Not in {app.Folder}";
             tile.Missing = !found;
             tile.LinkText = found ? string.Empty : $"{Host(app.Url)}  \u2197";
             tile.LinkTone = found ? Theme.TextFaint : Theme.Violet;
@@ -167,8 +185,8 @@ internal sealed class BenchPage : PageBase
             _tips.SetToolTip(
                 tile,
                 found
-                    ? $"Click to open \u2022 right-click to set the {app.ExeName} location"
-                    : $"Click for the install link \u2022 {app.Url}");
+                    ? $"Click to open \u2022 the magnifier browses for its folder \u2022 right-click for more"
+                    : $"Click for the install link \u2022 the magnifier browses for it \u2022 {app.Url}");
 
             tile.Invalidate();
         }
@@ -183,6 +201,9 @@ internal sealed class BenchPage : PageBase
         _getMissing.Text = missing == 0 ? "ALL RIGS READY" : $"INSTALL ALL MISSING ({missing})";
         _getMissing.Enabled = missing > 0;
         _getMissing.Invalidate();
+
+        _findMissing.Enabled = missing > 0;
+        _findMissing.Invalidate();
     }
 
     /// <summary>
@@ -229,10 +250,53 @@ internal sealed class BenchPage : PageBase
         using var setup = new RigSetupForm(missing);
         setup.ShowDialog(FindForm());
 
+        if (setup.NeedsSearch.Count > 0)
+        {
+            ActivityLog.Warn(
+                $"{setup.NeedsSearch.Count} rig(s) were installed but no executable was found \u2014 use the magnifier on their tile to browse to it.");
+        }
+
         ActivityLog.Info(setup.InstalledAnything
             ? "Rig setup finished \u2014 rescanning the suite."
             : "Rig setup closed without installing anything.");
 
+        RefreshStatuses();
+    }
+
+    /// <summary>
+    /// Finds rigs that are already on disk but outside the portable folder, which is the usual case
+    /// when the console lives on a USB stick and the rigs were installed elsewhere. Nothing is
+    /// downloaded: the hits are remembered by path and the grid re-detects them.
+    /// </summary>
+    private void OpenMissingSearch()
+    {
+        List<PortableApp> missing = Tools.Portables
+            .Where(app => Tools.ResolvePortable(app) is null)
+            .ToList();
+
+        if (missing.Count == 0)
+        {
+            ActivityLog.Info("Every benchmark rig is already present.");
+            RefreshStatuses();
+            return;
+        }
+
+        using var search = new RigSearchForm(missing);
+        search.ShowDialog(FindForm());
+
+        ActivityLog.Info(search.FoundAnything
+            ? "Rig search finished \u2014 rescanning the suite."
+            : "Rig search found nothing \u2014 install, or set the location by hand.");
+
+        RefreshStatuses();
+    }
+
+    private void SearchForRig(PortableApp app)
+    {
+        using var search = new RigSearchForm(new[] { app });
+        search.ShowDialog(FindForm());
+
+        if (search.FoundAnything) ActivityLog.Info($"{app.Title}: rescanning the suite.");
         RefreshStatuses();
     }
 
@@ -253,6 +317,12 @@ internal sealed class BenchPage : PageBase
             menu.Items.Clear();
             menu.Items.Add("Open install page \u2197", null, (_, _) => OpenInstallPage(app));
             menu.Items.Add("Copy install link", null, (_, _) => CopyInstallLink(app));
+
+            if (Tools.ResolvePortable(app) is null)
+            {
+                menu.Items.Add("Search this PC for it\u2026", null, (_, _) => SearchForRig(app));
+            }
+
             menu.Items.Add("Set install location\u2026", null, (_, _) => PickCustomPath(app));
 
             string? stored = Tools.StoredPath(app);
@@ -273,6 +343,60 @@ internal sealed class BenchPage : PageBase
         };
 
         return menu;
+    }
+
+    /// <summary>
+    /// Browses straight to the folder a rig was installed into. The picked folder is searched for the
+    /// rig's executable and then remembered, so a rig kept off C: never needs downloading again.
+    /// </summary>
+    private void BrowseForRig(PortableApp app)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = $"Pick the folder that holds {app.ExeName}",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = false,
+            SelectedPath = Tools.PortableRoot,
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        string? found = LocateIn(dialog.SelectedPath, app.ExeName);
+
+        if (found is null)
+        {
+            ActivityLog.Warn($"{app.Title}: no {app.ExeName} anywhere under {ShortPath(dialog.SelectedPath)}.");
+            RefreshStatuses();
+            return;
+        }
+
+        (bool ok, string message) = Tools.SetCustomPath(app, found);
+
+        if (ok) ActivityLog.Success($"{app.Title} now points at {ShortPath(found)}.");
+        else ActivityLog.Error($"{app.Title}: {message}");
+
+        RefreshStatuses();
+    }
+
+    /// <summary>The executable straight in the picked folder, else the first one below it.</summary>
+    private static string? LocateIn(string folder, string exeName)
+    {
+        try
+        {
+            string direct = Path.Combine(folder, exeName);
+            if (File.Exists(direct)) return direct;
+
+            foreach (string candidate in Directory.EnumerateFiles(folder, exeName, SearchOption.AllDirectories))
+            {
+                return candidate;
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or ArgumentException)
+        {
+            ActivityLog.Warn($"{ShortPath(folder)}: {ex.Message}");
+        }
+
+        return null;
     }
 
     private void PickCustomPath(PortableApp app)

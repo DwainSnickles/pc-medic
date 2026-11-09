@@ -75,22 +75,7 @@ internal sealed class MaintenancePage : PageBase
         Controls.Add(root);
     }
 
-    /// <summary>Opens the companion Disk Defrag tool, falling back to the Windows optimiser if it is missing.</summary>
-    private static void LaunchDiskDefrag()
-    {
-        string? path = Tools.Companion("DiskDefrag.exe");
-
-        if (path is null)
-        {
-            ActivityLog.Warn("Disk Defrag is not built beside PC Medic; opening the Windows optimiser instead.");
-            Tools.LaunchTool("Defragmenter", Path.Combine(Environment.SystemDirectory, "dfrgui.exe"));
-            return;
-        }
-
-        Tools.LaunchTool("Disk Defrag", path);
-    }
-
-    private static List<ToolSpec> BuildSpecs()
+    private List<ToolSpec> BuildSpecs()
     {
         string sys = Environment.SystemDirectory;
 
@@ -100,7 +85,7 @@ internal sealed class MaintenancePage : PageBase
                 () => Tools.LaunchTool("Disk Cleanup", Path.Combine(sys, "cleanmgr.exe"))),
 
             new("DISK DEFRAG", "Analyse, defragment and optimize volumes", "\uE9F9", "TOOL", Theme.Accent,
-                LaunchDiskDefrag),
+                () => NavigateTo?.Invoke("defrag")),
 
             new("RESTORE POINT", "Create a rollback point first", "\uE777", "SYSTEM", Theme.Accent,
                 () => Tools.LaunchTool("System Protection", Path.Combine(sys, "SystemPropertiesProtection.exe"))),

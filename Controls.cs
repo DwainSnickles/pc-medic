@@ -1239,6 +1239,20 @@ internal sealed class ToolTile : SkinnedControl
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public Color LinkTone { get; set; } = Theme.Violet;
 
+    /// <summary>Shows a small magnifier next to the action, for tiles whose page can browse to a folder.</summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool ShowFinder { get; set; }
+
+    /// <summary>Raised instead of Click when the magnifier itself is pressed.</summary>
+    public event EventHandler? FinderClicked;
+
+    private Rectangle _finderRect;
+    private bool _finderPress;
+    private bool _finderHover;
+
+    /// <summary>A forgiving target around the small lens: a near miss must browse, not install.</summary>
+    private Rectangle FinderHit => _finderRect.IsEmpty ? Rectangle.Empty : Rectangle.Inflate(_finderRect, 8, 8);
+
     protected override void OnMouseEnter(EventArgs e)
     {
         _hover = true;
@@ -1249,8 +1263,48 @@ internal sealed class ToolTile : SkinnedControl
     protected override void OnMouseLeave(EventArgs e)
     {
         _hover = false;
+        _finderHover = false;
+        Cursor = Cursors.Hand;
         Invalidate();
         base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+
+        bool over = ShowFinder && FinderHit.Contains(e.Location);
+        if (over == _finderHover) return;
+
+        _finderHover = over;
+        Cursor = over ? Cursors.Hand : Cursors.Default;
+        Invalidate();
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        _finderPress = ShowFinder && e.Button == MouseButtons.Left && FinderHit.Contains(e.Location);
+    }
+
+    /// <summary>Releasing off the magnifier drops the press, so the tile's own action still works.</summary>
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (!FinderHit.Contains(e.Location)) _finderPress = false;
+    }
+
+    /// <summary>A magnifier press belongs to the magnifier, never to the tile's own action.</summary>
+    protected override void OnClick(EventArgs e)
+    {
+        if (_finderPress)
+        {
+            _finderPress = false;
+            FinderClicked?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        base.OnClick(e);
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -1347,6 +1401,45 @@ internal sealed class ToolTile : SkinnedControl
                 ActionTone,
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
         }
+
+        _finderRect = ShowFinder ? FinderBounds() : Rectangle.Empty;
+        if (!_finderRect.IsEmpty) PaintFinder(g);
+    }
+
+    /// <summary>Sits just left of the action word, so the pair reads as one control row.</summary>
+    private Rectangle FinderBounds()
+    {
+        const int size = 20;
+        int right = Width - 16;
+
+        if (!string.IsNullOrEmpty(ActionText))
+        {
+            right -= TextRenderer.MeasureText(ActionText, Theme.Kicker).Width + 8;
+        }
+
+        return new Rectangle(right - size, Height - 27, size, size);
+    }
+
+    /// <summary>Drawn lens rather than a font glyph, so it stays crisp at this size.</summary>
+    private void PaintFinder(Graphics g)
+    {
+        Color tone = _finderHover ? Theme.Text : Theme.Alpha(ActionTone, 170);
+
+        using (GraphicsPath path = Theme.Round(_finderRect, 5f))
+        {
+            using var fill = new SolidBrush(Theme.Alpha(ActionTone, _finderHover ? 40 : 16));
+            using var pen = new Pen(Theme.Alpha(ActionTone, _finderHover ? 180 : 80));
+            g.FillPath(fill, path);
+            g.DrawPath(pen, path);
+        }
+
+        float cx = _finderRect.X + (_finderRect.Width / 2f) - 1.2f;
+        float cy = _finderRect.Y + (_finderRect.Height / 2f) - 1.2f;
+        const float lens = 4.4f;
+
+        using var stroke = new Pen(tone, 1.4f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        g.DrawEllipse(stroke, cx - lens, cy - lens, lens * 2, lens * 2);
+        g.DrawLine(stroke, cx + (lens * 0.7f), cy + (lens * 0.7f), cx + (lens * 1.5f), cy + (lens * 1.5f));
     }
 
     /// <summary>Small download stamp on the plate, so a missing rig is obvious at a glance.</summary>

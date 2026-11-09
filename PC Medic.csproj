@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>PC_Medic</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.3.0</Version>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -16,11 +16,31 @@
     <PackageReference Include="Autoupdater.NET.Official" Version="1.9.3" />
   </ItemGroup>
 
+  <!-- Build the companion from source and host its form inside the console. -->
+  <ItemGroup>
+    <ProjectReference Include="..\DiskDefrag\DiskDefrag.csproj" />
+  </ItemGroup>
+
   <!-- Disk Defrag is a separate project living in its own folder. -->
   <ItemGroup>
     <Compile Remove="DiskDefrag\**" />
     <EmbeddedResource Remove="DiskDefrag\**" />
     <None Remove="DiskDefrag\**" />
   </ItemGroup>
+
+  <!-- Ship the Disk Defrag build that sits beside this project, so the companion is never a stale copy. -->
+  <Target Name="SyncDiskDefrag" AfterTargets="Build"
+          Condition="Exists('$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.exe')">
+    <ItemGroup>
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.exe" />
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.dll" />
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.pdb" />
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.deps.json" />
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.runtimeconfig.json" />
+      <DiskDefragCompanion Include="$(MSBuildProjectDirectory)/../DiskDefrag/bin/$(Configuration)/net10.0-windows/DiskDefrag.runtimeconfig.dev.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DiskDefragCompanion)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
+    <Message Importance="high" Text="Disk Defrag companion synced from ../DiskDefrag/bin/$(Configuration)." />
+  </Target>
 
 </Project>

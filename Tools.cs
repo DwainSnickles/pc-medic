@@ -91,8 +91,21 @@ internal static class Tools
             string full = Path.GetFullPath(executable);
             if (!File.Exists(full)) return (false, "That file does not exist.");
 
-            Paths[app.Folder] = full;
-            SavePaths();
+            Dictionary<string, string> paths = Paths;
+            paths[app.Folder] = full;
+
+            try
+            {
+                SavePaths();
+            }
+            catch (Exception ex)
+            {
+                // Memory and disk stay honest: a path that could not be stored is not remembered at all,
+                // so the tile never claims CUSTOM for something the next launch will forget.
+                paths.Remove(app.Folder);
+                return (false, $"found it, but the path could not be remembered ({ex.Message})");
+            }
+
             return (true, full);
         }
         catch (Exception ex)
@@ -104,7 +117,15 @@ internal static class Tools
     public static void ClearCustomPath(PortableApp app)
     {
         if (!Paths.Remove(app.Folder)) return;
-        SavePaths();
+
+        try
+        {
+            SavePaths();
+        }
+        catch (Exception ex)
+        {
+            ActivityLog.Warn($"Remembered rig paths could not be saved: {ex.Message}");
+        }
     }
 
     private static Dictionary<string, string> Paths
@@ -137,18 +158,20 @@ internal static class Tools
         }
     }
 
+    /// <summary>
+    /// Writes beside the store and swaps it in, so an interrupted save can never leave a truncated file
+    /// that would read back as "no remembered rigs". Throws on failure so the caller can say so.
+    /// </summary>
     private static void SavePaths()
     {
-        try
-        {
-            string? folder = Path.GetDirectoryName(StorePath);
-            if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
-            File.WriteAllText(StorePath, JsonSerializer.Serialize(Paths, new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch (Exception ex)
-        {
-            ActivityLog.Warn($"Remembered rig paths could not be saved: {ex.Message}");
-        }
+        string json = JsonSerializer.Serialize(Paths, new JsonSerializerOptions { WriteIndented = true });
+
+        string? folder = Path.GetDirectoryName(StorePath);
+        if (!string.IsNullOrEmpty(folder)) Directory.CreateDirectory(folder);
+
+        string temp = StorePath + ".tmp";
+        File.WriteAllText(temp, json);
+        File.Move(temp, StorePath, overwrite: true);
     }
 
     public static (bool Ok, string Message) Launch(string fileName, string? arguments = null, bool elevated = false)

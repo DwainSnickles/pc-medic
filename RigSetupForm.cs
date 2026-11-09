@@ -22,9 +22,16 @@ internal sealed class RigSetupForm : Form
     private readonly CancellationTokenSource _cancel = new();
     private bool _running;
     private int _installed;
+    private readonly List<PortableApp> _needsSearch = new();
 
     /// <summary>True when at least one rig landed, so the page knows to re-detect everything.</summary>
     public bool InstalledAnything => _installed > 0;
+
+    /// <summary>
+    /// Rigs winget reported as installed but whose executable could not be found. The page offers a
+    /// search for these instead of the install link, since downloading again would not help.
+    /// </summary>
+    public IReadOnlyList<PortableApp> NeedsSearch => _needsSearch;
 
     public RigSetupForm(IReadOnlyList<PortableApp> missing)
     {
@@ -197,14 +204,19 @@ internal sealed class RigSetupForm : Form
                 }
                 else
                 {
+                    if (result.Unlocated) _needsSearch.Add(app);
                     ActivityLog.Error($"{app.Title}: {result.Message}");
                 }
             }
 
+            string suffix = _needsSearch.Count == 0
+                ? string.Empty
+                : $"  \u2022  {_needsSearch.Count} NEED A SEARCH";
+
             SetStatus(
                 _cancel.IsCancellationRequested
-                    ? $"CANCELLED \u2014 {_installed} OF {_rows.Count} RIGS INSTALLED"
-                    : $"FINISHED \u2014 {_installed} OF {_rows.Count} RIGS INSTALLED",
+                    ? $"CANCELLED \u2014 {_installed} OF {_rows.Count} RIGS INSTALLED{suffix}"
+                    : $"FINISHED \u2014 {_installed} OF {_rows.Count} RIGS INSTALLED{suffix}",
                 _installed == _rows.Count ? Theme.Good : Theme.Warn);
         }
         finally
@@ -256,6 +268,17 @@ internal sealed class RigProgressRow : SkinnedControl
         _percent = 0;
         _state = "DOWNLOADING";
         _message = "Asking winget for the package\u2026";
+        _tone = Tone;
+        Invalidate();
+    }
+
+    /// <summary>Starts a search line: a sweeping bar with no percentage, until a hit or the walk ends.</summary>
+    public void Search(string message)
+    {
+        _running = true;
+        _percent = 0;
+        _state = "SEARCHING";
+        _message = message;
         _tone = Tone;
         Invalidate();
     }

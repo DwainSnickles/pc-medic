@@ -216,6 +216,7 @@ internal sealed class UpdatesPage : PageBase
         {
             (List<AppUpgrade> apps, string? error) = await Task.Run(UpdatesService.ScanApps);
             _appItems = apps;
+            _busyApps = false;
             RebuildApps();
             UpdatesState.Publish(apps.Count, UpdatesState.Drivers);
 
@@ -264,6 +265,7 @@ internal sealed class UpdatesPage : PageBase
         {
             (List<DriverUpdate> drivers, string? error) = await Task.Run(UpdatesService.ScanDrivers);
             _driverItems = drivers;
+            _busyDrivers = false;
             RebuildDrivers();
             UpdatesState.Publish(UpdatesState.Apps, drivers.Count);
 
@@ -274,7 +276,7 @@ internal sealed class UpdatesPage : PageBase
             else
             {
                 SetDriverStatus(
-                    drivers.Count == 0 ? "NO DRIVER UPDATES" : $"{drivers.Count} DRIVER UPDATES",
+                    drivers.Count == 0 ? "NO DRIVERS NEED UPDATING" : $"{drivers.Count} DRIVER UPDATES",
                     drivers.Count == 0 ? Theme.Good : Theme.Text);
             }
 
@@ -306,7 +308,8 @@ internal sealed class UpdatesPage : PageBase
         {
             ResetConfirm();
             _confirmRow = row;
-            row.ActionText = "CONFIRM?";
+            row.ActionGlyph = "\uE73E";
+            row.ActionTone = Theme.Warn;
             _confirmTimer.Start();
             SetAppStatus($"PRESS CONFIRM TO REMOVE {Theme.Truncate(app.Name.ToUpperInvariant(), 22)}", Theme.Warn, app.Name);
             return;
@@ -320,7 +323,7 @@ internal sealed class UpdatesPage : PageBase
     {
         _confirmTimer.Stop();
 
-        if (_confirmRow is { IsDisposed: false } row) row.ActionText = "UNINSTALL";
+        if (_confirmRow is { IsDisposed: false } row) { row.ActionGlyph = "\uE74D"; row.ActionTone = Theme.Bad; }
         _confirmRow = null;
     }
 
@@ -413,7 +416,7 @@ internal sealed class UpdatesPage : PageBase
                 BadgeText = "APP",
                 BadgeTone = Theme.Accent,
                 Tone = Theme.Accent,
-                ActionText = "UNINSTALL",
+                ActionGlyph = "\uE74D",
                 ActionTone = Theme.Bad,
                 Checked = true,
                 Tag = app,
@@ -421,6 +424,8 @@ internal sealed class UpdatesPage : PageBase
 
             row.Toggled += (_, _) => SyncButtons();
             row.ActionClicked += clicked => RequestUninstall(clicked, app);
+            string details = $"{app.Name}\r\n{app.VersionLine}  \u2022  {app.Id}";
+            row.ActionHoverChanged += (_, over) => _tips.SetToolTip(row, over ? $"UNINSTALL {app.Name}" : details);
             _tips.SetToolTip(row, $"{app.Name}\r\n{app.VersionLine}  \u2022  {app.Id}");
             row.SetBounds(4, y, RowWidth(_apps), 62);
             _apps.Controls.Add(row);
@@ -444,7 +449,7 @@ internal sealed class UpdatesPage : PageBase
 
         if (_driverItems.Count == 0)
         {
-            y = AddEmpty(_drivers, _busyDrivers ? "Scanning\u2026" : "No driver updates offered.", y);
+            y = AddEmpty(_drivers, _busyDrivers ? "Scanning\u2026" : "No drivers need updating.", y);
         }
 
         foreach (DriverUpdate driver in _driverItems)
@@ -561,6 +566,7 @@ internal sealed class UpdatesPage : PageBase
         row.Working = true;
         row.Progress = 0;
         row.ActionText = string.Empty;
+        row.ActionGlyph = string.Empty;
         row.BadgeText = "0%";
         row.BadgeTone = Theme.Accent;
         row.Invalidate();
@@ -578,7 +584,9 @@ internal sealed class UpdatesPage : PageBase
     {
         row.Working = false;
         row.Progress = 0;
-        row.ActionText = "UNINSTALL";
+        row.ActionText = string.Empty;
+        row.ActionGlyph = "\uE74D";
+        row.ActionTone = Theme.Bad;
         row.BadgeText = ok ? "DONE" : "FAILED";
         row.BadgeTone = ok ? Theme.Good : Theme.Bad;
         row.Invalidate();

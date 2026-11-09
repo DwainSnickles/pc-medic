@@ -1,7 +1,10 @@
 namespace PC_Medic;
 
-/// <summary>Outcome of one rig install: whether it landed, what to say, and where the executable is.</summary>
-internal sealed record RigInstallResult(bool Ok, string Message, string? Path);
+/// <summary>
+/// Outcome of one rig install: whether it landed, what to say, where the executable is, and whether
+/// winget claims success while no executable could be found — the case that needs a search instead.
+/// </summary>
+internal sealed record RigInstallResult(bool Ok, string Message, string? Path, bool Unlocated = false);
 
 /// <summary>
 /// Installs a benchmark rig through winget and then proves where it landed. winget is the only
@@ -48,7 +51,8 @@ internal static class RigInstaller
                 return new RigInstallResult(
                     false,
                     ok ? "installed, but no executable was found" : "winget says it is already installed, but no executable was found",
-                    null);
+                    null,
+                    Unlocated: true);
             }
 
             Remember(app, path);

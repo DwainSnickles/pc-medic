@@ -17,7 +17,8 @@ internal sealed class MainForm : Form
     private readonly Badge _adminBadge = new();
     private readonly Badge _planBadge = new();
     private readonly ChromeButton _minimize = new() { Glyph = "\uE921" };
-    private readonly ToolTip _chromeTips = new();
+    private readonly NeonButton _elevate = new() { Text = "ELEVATE", Size = new Size(96, 28), Tone = Theme.Warn };
+    private readonly ToolTip _tips = new();
     private readonly List<NavItem> _nav = new();
     private NavItem? _updatesNav;
     private readonly Dictionary<string, PageBase> _pages = new();
@@ -120,6 +121,18 @@ internal sealed class MainForm : Form
     internal static string TrayText(SystemSample sample) =>
         $"PC MEDIC \u2014 CPU {sample.CpuPercent:0}% \u00b7 RAM {sample.MemoryPercent:0}%" +
         $" \u00b7 {Theme.Bytes(sample.MemoryUsed)} / {Theme.Bytes(sample.MemoryTotal)}";
+
+    /// <summary>Confirms a second launch was redirected to this console instead of opening another.</summary>
+    internal void NotifySecondLaunch()
+    {
+        if (IsDisposed || !_tray.Visible) return;
+
+        _tray.ShowBalloonTip(
+            2200,
+            "PC MEDIC is already running",
+            "The console was brought forward instead of starting a second copy.",
+            ToolTipIcon.None);
+    }
 
     /// <summary>Brings the console back from the tray or the taskbar.</summary>
     internal void ShowFromTray()
@@ -228,17 +241,7 @@ internal sealed class MainForm : Form
             Enabled = !Native.IsElevated,
         };
 
-        elevate.Click += (_, _) =>
-        {
-            if (Native.RestartElevated())
-            {
-                Close();
-            }
-            else
-            {
-                ActivityLog.Warn("Elevation was cancelled.");
-            }
-        };
+        elevate.Click += (_, _) => ElevateNow();
 
         // The update check lives here as a button rather than riding along in the kicker line.
         var checkUpdates = new NeonButton
@@ -264,6 +267,22 @@ internal sealed class MainForm : Form
         _adminBadge.Tone = Native.IsElevated ? Theme.Good : Theme.Warn;
     }
 
+    /// <summary>Relaunches through UAC. The console name is released first, or the new copy exits as a duplicate.</summary>
+    private void ElevateNow()
+    {
+        if (Native.IsElevated) return;
+
+        Program.ReleaseInstance();
+
+        if (Native.RestartElevated())
+        {
+            Close();
+            return;
+        }
+
+        Program.ReclaimInstance();
+        ActivityLog.Warn("Elevation was cancelled — still running limited.");
+    }
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
@@ -309,8 +328,13 @@ internal sealed class MainForm : Form
         _header.Controls.Add(_planBadge);
 
         // Fixed pad in the header: minimizing here parks the console in the tray, which the tooltip says.
+        // Present only in a limited run: one click asks Windows for administrator rights.
+        _elevate.Visible = !Native.IsElevated;
+        _header.Controls.Add(_elevate);
+        _tips.SetToolTip(_elevate, "Restarts PC MEDIC through UAC so repairs, machine-wide tweaks and Disk Defrag can run.");
+        _elevate.Click += (_, _) => ElevateNow();
         _header.Controls.Add(_minimize);
-        _chromeTips.SetToolTip(_minimize, "Minimize to Notify Icon");
+        _tips.SetToolTip(_minimize, "Minimize to Notify Icon");
         _minimize.Click += (_, _) => WindowState = FormWindowState.Minimized;
 
         _header.Resize += (_, _) => LayoutHeader();
@@ -323,6 +347,11 @@ internal sealed class MainForm : Form
         right -= _minimize.Width + 16;
         _clock.Location = new Point(right - _clock.Width, 27);
         right -= _clock.Width + 16;
+        if (_elevate.Visible)
+        {
+            _elevate.SetBounds(right - _elevate.Width, 26, _elevate.Width, 28);
+            right -= _elevate.Width + 12;
+        }
         _adminBadge.Location = new Point(right - _adminBadge.Width, 31);
         right -= _adminBadge.Width + 10;
         _planBadge.Location = new Point(right - _planBadge.Width, 31);
@@ -353,29 +382,43 @@ internal sealed class MainForm : Form
 
     private void BuildNav()
     {
-        (string Key, string Glyph, string Caption)[] entries =
+        (string Key, string Glyph, string Caption, string Hint)[] entries =
         {
-            ("overview", "\uE80F", "Overview"),
-            ("startup", "\uE71D", "Startup Apps"),
-            ("boot", "\uE945", "Boot Speed"),
-            ("sleep", "\uE708", "Optimize Sleep"),
-            ("maintenance", "\uE90F", "Maintenance"),
-            ("tweaks", "\uE713", "Tweaks"),
-            ("programs", "\uE7B8", "Programs"),
-            ("updates", "\uE896", "Updates"),
-            ("audit", "\uE721", "Registry Audit"),
-            ("benchmarks", "\uE9D9", "Benchmarks"),
-            ("console", "\uE756", "Command Shell"),
+            ("overview", "\uE80F", "Overview",
+                "Live CPU, memory, disk, update and uptime telemetry with one-click cleanup actions."),
+            ("startup", "\uE71D", "Startup Apps",
+                "Everything that starts with Windows \u2014 Run keys, Startup folders and scheduled tasks \u2014 each reversible."),
+            ("boot", "\uE945", "Boot Speed",
+                "Menu delay and boot-menu tuning, with the previous values saved before anything changes."),
+            ("sleep", "\uE708", "Optimize Sleep",
+                "Sleep, hibernate and power-plan settings through powercfg, with a backup to restore from."),
+            ("maintenance", "\uE90F", "Maintenance",
+                "Fifteen recovery and cleanup tools in one grid: SFC, DISM, restore points, Storage Sense, Disk Defrag."),
+            ("tweaks", "\uE713", "Tweaks",
+                "Explorer and visual-effects tweaks, each written with a backup so it can be reverted."),
+            ("programs", "\uE7B8", "Programs",
+                "Installed applications from both registry hives, with uninstall and repair routing."),
+            ("updates", "\uE896", "Updates",
+                "winget application upgrades and Windows Update driver scans, sharing one pending count."),
+            ("audit", "\uE721", "Registry Audit",
+                "Registry keys and shortcuts whose targets are gone, with review rows for what could not be resolved."),
+            ("benchmarks", "\uE9D9", "Benchmarks",
+                "Quick CPU and disk sanity runs; a missing benchmark rig installs from the page itself."),
+            ("console", "\uE756", "Command Shell",
+                "An embedded console for the tools the pages do not wrap."),
         };
 
         int y = 104;
-        foreach ((string key, string glyph, string caption) in entries)
+        foreach ((string key, string glyph, string caption, string hint) in entries)
         {
             var item = new NavItem(key, glyph, caption)
             {
                 Location = new Point(14, y),
                 Width = 218,
             };
+
+            // The caption alone says where a page goes, so the tip says what the page is for.
+            _tips.SetToolTip(item, hint);
 
             item.Click += (_, _) => ShowPage(item.Key);
             _sidebar.Controls.Add(item);
@@ -430,9 +473,12 @@ internal sealed class MainForm : Form
             candidate.Visible = pageKey == key;
         }
 
+        // The defrag page lives under Maintenance, so keep that nav item lit while it is open.
+        string navKey = key == "defrag" ? "maintenance" : key;
+
         foreach (NavItem item in _nav)
         {
-            item.Active = item.Key == key;
+            item.Active = item.Key == navKey;
         }
 
         _pageTitle.Text = page.TitleText;
@@ -449,6 +495,7 @@ internal sealed class MainForm : Form
         "boot" => new BootPage(),
         "sleep" => new SleepPage(),
         "maintenance" => new MaintenancePage(),
+        "defrag" => new DefragPage(),
         "tweaks" => new TweaksPage(),
         "programs" => new ProgramsPage(),
         "updates" => new UpdatesPage(),
@@ -457,6 +504,28 @@ internal sealed class MainForm : Form
         "console" => new ConsolePage(),
         _ => new OverviewPage(),
     };
+
+    /// <summary>A defrag that PC Medic started is stopped on exit, so ask first while it is working.</summary>
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        base.OnFormClosing(e);
+
+        if (e.Cancel) return;
+
+        if (!_pages.TryGetValue("defrag", out PageBase? page) || page is not DefragPage { IsWorking: true }) return;
+
+        DialogResult answer = MessageBox.Show(
+            this,
+            "Disk Defrag is still working." + Environment.NewLine + Environment.NewLine +
+            "Closing PC MEDIC stops that operation." + Environment.NewLine + Environment.NewLine +
+            "Close anyway?",
+            "Defrag in progress",
+            MessageBoxButtons.OKCancel,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (answer == DialogResult.Cancel) e.Cancel = true;
+    }
 
     protected override void Dispose(bool disposing)
     {
